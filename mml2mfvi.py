@@ -74,10 +74,7 @@ def mml_to_akao(mml, fileid='mml'):
                 print line
                 for c in v:
                     if c in line:
-                        skip = True
-                        print "{} in line, skipping".format(c)
-                        break
-                if skip: continue
+                        line = re.sub(c+'.*?'+c, '', line)
                 line = re.sub('[^x\da-fA-F]', ' ', line[5:])
                 tokens = line.split()
                 print tokens
