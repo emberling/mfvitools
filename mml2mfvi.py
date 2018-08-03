@@ -29,6 +29,8 @@ def mml_to_akao(mml, fileid='mml'):
     #returns dict of (data, inst) tuples (4096, 32 bytes max)
     #one generated for each #VARIANT directive
 
+    if isinstance(mml, str):
+        mml = mml.splitlines()
     #one-to-one character replacement
     transes = []
     for line in mml:
@@ -71,13 +73,11 @@ def mml_to_akao(mml, fileid='mml'):
         for line in mml:
             skip = False
             if line.startswith("#WAVE") and len(line) > 5:
-                print line
                 for c in v:
                     if c in line:
                         line = re.sub(c+'.*?'+c, '', line)
                 line = re.sub('[^x\da-fA-F]', ' ', line[5:])
                 tokens = line.split()
-                print tokens
                 if len(tokens) < 2: continue
                 numbers = []
                 for t in tokens[0:2]:
@@ -85,7 +85,6 @@ def mml_to_akao(mml, fileid='mml'):
                     base = 16 if 'x' in t else 10
                     t = t.replace('x' if base == 16 else 'xabcdef', '')
                     numbers.append(int(t, base))
-                print numbers
                 if numbers[0] not in range(0x20,0x30):
                     warn(fileid, "#WAVE {}, {}".format(hex(numbers[0]), hex(numbers[1])), "Program ID out of range (expected 0x20 - 0x2F / 32 - 47)")
                     continue
@@ -124,8 +123,6 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
     next_jumpid = 1
     jumpout = []
     
-    print "main, ignoring {}".format(ignore)
-
     while len(m):
         command = m.pop(0)
         
