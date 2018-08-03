@@ -109,7 +109,7 @@ def akao_to_mml(data, inst=None, fileid='akao'):
             s = byte_tbl[byte][1]
             params = []
             if paramlen > 2:
-                params.append(data[loc+1])
+                params.append(ord(data[loc+1]))
                 tloc = loc + 2
             else: tloc = loc + 1
             dest = unskew(ord(data[tloc]) + (ord(data[tloc+1]) << 8))
