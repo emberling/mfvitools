@@ -80,7 +80,7 @@ def akao_to_mml(data, inst=None, fileid='akao'):
         byte = data[loc]
         if byte in ["\xF5", "\xF6", "\xFC"]:
             jloc = loc+2 if byte == "\xF5" else loc+1
-            target = ord(data[jloc]) + (ord(data[jloc+1]) << 8)
+            target = unskew(ord(data[jloc]) + (ord(data[jloc+1]) << 8))
             jumps[target] = nextjump
             nextjump += 1
         bytelen = 1
