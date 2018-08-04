@@ -76,7 +76,7 @@ def akao_to_mml(data, inst=None, fileid='akao'):
     loc = 0x26
     jumps = {}
     nextjump = 1
-    while loc < len(data):
+    while loc < len(data)-3:
         byte = data[loc]
         if byte in ["\xF5", "\xF6", "\xFC"]:
             jloc = loc+2 if byte == "\xF5" else loc+1
@@ -84,7 +84,7 @@ def akao_to_mml(data, inst=None, fileid='akao'):
             jumps[target] = nextjump
             nextjump += 1
         bytelen = 1
-        if byte in byte_tbl: bytelen += byte_tbl[byte][0]
+        if ord(byte) in byte_tbl: bytelen += byte_tbl[ord(byte)][0]
         loc += bytelen
     for j, i in jumps.items():
         print "jump id {} is at {}".format(i, hex(j))
@@ -93,7 +93,8 @@ def akao_to_mml(data, inst=None, fileid='akao'):
     measure = 0
     sinceline = 0
     line = ""
-    while loc < len(data):
+    foundjumps = []
+    while loc < len(data)-3:
         byte = ord(data[loc])
         bytelen = 1
         # IF channel points here
@@ -102,10 +103,10 @@ def akao_to_mml(data, inst=None, fileid='akao'):
         # IF jump points here
         if loc in jumps:
             line += " $%d " % jumps[loc]
+            foundjumps.append(jumps[loc])
         # IF this is a jump
         if byte in jump_bytes:
             paramlen = byte_tbl[byte][0]
-            print "paramlen {}".format(paramlen)
             s = byte_tbl[byte][1]
             params = []
             late_add_param = None
@@ -114,7 +115,6 @@ def akao_to_mml(data, inst=None, fileid='akao'):
                 tloc = loc + 2
             else: tloc = loc + 1
             dest = unskew(ord(data[tloc]) + (ord(data[tloc+1]) << 8))
-            print "dest {}".format(hex(dest))
             bytelen += paramlen
             if dest in jumps:
                 params.append(jumps[dest])
@@ -167,7 +167,11 @@ def akao_to_mml(data, inst=None, fileid='akao'):
                     line = ""
                     sinceline = 0
         loc += bytelen
-    mml.append(s)
+    mml.append(line)
+    
+    for k, v in jumps.items():
+        if v not in foundjumps:
+            warn(fileid, "{} {}".format(k,v), "Jump destination never found")
     return mml
     
 if __name__ == "__main__":
