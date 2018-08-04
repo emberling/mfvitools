@@ -84,7 +84,11 @@ def mml_to_akao(mml, fileid='mml'):
                     t = t.lower()
                     base = 16 if 'x' in t else 10
                     t = t.replace('x' if base == 16 else 'xabcdef', '')
-                    numbers.append(int(t, base))
+                    try:
+                        numbers.append(int(t, base))
+                    except:
+                        warn(fileid, "#WAVE {}, {}".format(tokens[0], tokens[1]), "Couldn't parse token {}".format(t))
+                        continue
                 if numbers[0] not in range(0x20,0x30):
                     warn(fileid, "#WAVE {}, {}".format(hex(numbers[0]), hex(numbers[1])), "Program ID out of range (expected 0x20 - 0x2F / 32 - 47)")
                     continue
