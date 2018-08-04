@@ -301,16 +301,13 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                 params[0] = 1
             data += "\xF5" + chr(params[0]) + int_insert("  ",0,target,2)
         #case: conditional jump
-        elif prefix == ":" and len(params) == 2:
-            if params[1] in targets:
-                target = targets[params[1]]
+        elif prefix == ":" and len(params) == 1:
+            if params[0] in targets:
+                target = targets[params[0]]
             else:
                 target = len(data)
-                pendingjumps[len(data)+2] = params[1]
-            if params[0] >= 256:
-                warn(fileid, command, "Parameter {} out of range, substituting 1".format(params[0]))
-                params[0] = 1
-            data += "\xFC" + chr(params[0]) + int_insert("  ",0,target,2)
+                pendingjumps[len(data)+1] = params[0]
+            data += "\xFC" + int_insert("  ",0,target,2)
     
     #insert pending jumps
     for k, v in pendingjumps.items():

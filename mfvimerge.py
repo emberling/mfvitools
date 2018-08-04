@@ -80,7 +80,7 @@ for i, s in enumerate(segments):
     pos = 0
     while pos < len(s):
         byte = s[pos]
-        if byte in {"\xF5", "\xF6", "\xFA"}:
+        if byte in {"\xF5", "\xF6", "\xFA", "\xFC"}:
             if byte in {"\xF5", "\xFA"}:
                 pos += 1
             target = (ord(s[pos+1]) << 8) + ord(s[pos+2])

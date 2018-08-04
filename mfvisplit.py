@@ -70,7 +70,7 @@ while pos < size:
     if not byte: break
 
     pieces[current] += byte
-    if byte in {"\xF6", "\xF5", "\xFA"} and not skip:
+    if byte in {"\xF6", "\xF5", "\xFA", "\xFC"} and not skip:
         if byte in ["\xF5", "\xFA"]: pieces[current] += fin.read(1)
         pos = fin.tell()
         dest = read_word(fin)

@@ -71,7 +71,7 @@ for i, d in enumerate(data):
     while loc < len(d):
         byte = d[loc]
         if byte in {"\xF5", "\xF6", "\xFA", "\xFC"}:
-            if byte in {"\xF5", "\xFA", "\xFC"}:
+            if byte in {"\xF5", "\xFA"}:
                 loc += 1
             targets.append((ord(d[loc+1]) << 8) + ord(d[loc+2]))
             loc += 2
@@ -88,7 +88,7 @@ for i, d in enumerate(data):
     while loc < len(d):
         byte = d[loc]
         if byte in {"\xF5", "\xF6", "\xFA", "\xFC"}:
-            if byte in {"\xF5", "\xFA", "\xFC"}:
+            if byte in {"\xF5", "\xFA"}:
                 newdata += d[loc]
                 loc += 1
             newdata += d[loc:loc+3]
@@ -148,7 +148,7 @@ for i, d in enumerate(data):
     while loc < len(newdata):
         byte = newdata[loc]
         if byte in {"\xF5", "\xF6", "\xFA", "\xFC"}:
-            if byte in {"\xF5", "\xFA", "\xFC"}:
+            if byte in {"\xF5", "\xFA"}:
                 loc += 1
             newdata = strmod(newdata, loc+1, bytes(targets.pop(0)))
             loc += 2

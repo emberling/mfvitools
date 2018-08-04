@@ -144,7 +144,7 @@ while pos < size:
         fout.seek(pos)
         write_word(ndest)
         fout.seek(pos+2)
-    elif byte =="\xF6":
+    elif byte in ["\xF6", "\xFC"]:
         pos = fout.tell()
         dest = read_word(fout)
         ndest = (dest if dest >= shift else dest + 0x10000) - shift

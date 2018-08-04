@@ -89,7 +89,7 @@ codes = { #arg bytes, readable name
     0xF9: (0, "Output+"),
     0xFA: (3, "CTJumpIf"),
     0xFB: (0, "DrumMode"),
-    0xFC: (0, "DrumOff"),
+    0xFC: (2, "JumpIf"),
     0xFD: (1, "???FD???"),
     0xFE: (2, "???FE???"),
     0xFF: (0, "???FF???") }

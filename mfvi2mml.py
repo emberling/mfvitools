@@ -79,7 +79,7 @@ def akao_to_mml(data, inst=None, fileid='akao'):
     while loc < len(data):
         byte = data[loc]
         if byte in ["\xF5", "\xF6", "\xFC"]:
-            jloc = loc+1 if byte == "\xF6" else loc+2
+            jloc = loc+2 if byte == "\xF5" else loc+1
             target = ord(data[jloc]) + (ord(data[jloc+1]) << 8)
             jumps[target] = nextjump
             nextjump += 1
@@ -108,7 +108,8 @@ def akao_to_mml(data, inst=None, fileid='akao'):
             print "paramlen {}".format(paramlen)
             s = byte_tbl[byte][1]
             params = []
-            if paramlen > 2:
+            late_add_param = None
+            if byte == 0xF5:
                 params.append(ord(data[loc+1]))
                 tloc = loc + 2
             else: tloc = loc + 1
@@ -127,6 +128,8 @@ def akao_to_mml(data, inst=None, fileid='akao'):
             line += s
             if byte in [0xEB, 0xF6]: #segment enders
                 line += "\n\nl16"
+            else:
+                line += " "
         #
         elif byte in byte_tbl:
             paramlen = byte_tbl[byte][0]

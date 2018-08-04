@@ -102,7 +102,7 @@ command_tbl = {
     ("[", 0): 0xE2,  #start loop
     ("[", 1): 0xE2,  #start loop
     ("]", 0): 0xE3  #end loop
-    #(":", 2): 0xFC - jump to marker if event signal is sent
+    #(":", 1): 0xFC - jump to marker if event signal is sent
     #(";", 1): 0xF6 - jump to marker in another channel
     }
 
@@ -159,5 +159,5 @@ byte_tbl = {
     0xF9: (0, "u1"),
     0xFA: (0, "u0"),
     0xFB: (0, "%d1"),
-    0xFC: (3, ":"),
+    0xFC: (2, ":"),
    }
