@@ -24,7 +24,7 @@ def int_insert(data, position, newdata, length, reversed=True):
 def warn(fileid, cmd, msg):
     print "{}: WARNING: in {:<10}: {}".format(fileid, cmd, msg)
 
-def mml_to_akao(mml, fileid='mml'):
+def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
     #preprocessor
     #returns dict of (data, inst) tuples (4096, 32 bytes max)
     #one generated for each #VARIANT directive
@@ -50,9 +50,18 @@ def mml_to_akao(mml, fileid='mml'):
             newmml.append(line.translate(trans))
         mml = newmml
     
+    #sfxvariant
+    all_delims = set()
+    for line in mml:
+        if line.startswith("#SFXV") and len(line) > 5:
+            tokens = line[5:].split()
+            if len(tokens) < 1: continue
+            if len(tokens) >= 2 and sfxmode:
+                all_delims.update(tokens[1])
+            elif not sfxmode:
+                all_delims.update(tokens[0])
     #variants
     variants = {}
-    all_delims = set()
     for line in mml:
         if line.startswith("#VARIANT") and len(line) > 8:
             tokens = line[8:].split()
@@ -64,7 +73,11 @@ def mml_to_akao(mml, fileid='mml'):
     for k, v in variants.items():
         variants[k] = "".join([c for c in all_delims if c not in variants[k]])
     if not variants:
-        variants['_default_'] = ''
+        variants['_default_'] = ''.join([c for c in all_delims])
+    if variant:
+        if variant not in variants:
+            print "mml error: requested unknown variant '{}'\n".format(variant)
+        variants = {variant: variants[variant]}
         
     #generate instruments
     isets = {}
@@ -134,7 +147,8 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
         if command in ignore:
             while len(m):
                 next = m.pop(0)
-                if next == command: break
+                if next == command:
+                    break
             continue
         #inline comment // channel marker
         elif command == "{":
