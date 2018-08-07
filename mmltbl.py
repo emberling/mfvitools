@@ -60,9 +60,9 @@ command_tbl = {
     ("%g1", 0): 0xE6,#enable roll (retrig?)
     ("%k", 1): 0xD9, #set transpose
     ("%l0", 0): 0xE5,#disable legato 
-    ("%l1", 1): 0xE4,#enable legato
+    ("%l1", 0): 0xE4,#enable legato
     ("%n0", 0): 0xD1,#disable noise
-    ("%n1", 1): 0xD0,#enable noise
+    ("%n1", 0): 0xD0,#enable noise
     ("%p0", 0): 0xD3,#disable pitch mod
     ("%p1", 0): 0xD2,#enable pitch mod
     ("%r", 0): 0xE1, #reset ADSR
