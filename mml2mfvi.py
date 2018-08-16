@@ -1,4 +1,4 @@
-import sys, os, re, traceback
+import sys, os, re, traceback, copy
 from string import maketrans
 from mmltbl import *
 
@@ -128,10 +128,31 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
         
         
 def mml_to_akao_main(mml, ignore='', fileid='mml'):
+    mml = copy.copy(mml)
+    #final bit of preprocessing (macros)
+    macros = {}
+    for line in mml:
+        if line.lower().startswith("#def"):
+            pre, sep, post = line[4:].partition('=')
+            if post:
+                pre = pre.replace("'", "").lower().strip()
+                for c in ignore:
+                    post = re.sub(c+".*?"+c, "", post)
+                macros[pre] = post.lower()
     
+    stillmacros = True
+    while stillmacros:
+        stillmacros = False
+        for i, line in enumerate(mml):
+            for k, v in macros.items():
+                if "'{}'".format(k) in line:
+                    stillmacros = True
+                    line = line.replace("'{}'".format(k), v)
+            mml[i] = line
+        
     for i, line in enumerate(mml):
         mml[i] = line.split('#')[0].lower()
-    
+            
     m = list(" ".join(mml))
     targets, channels, pendingjumps = {}, {}, {}
     data = "\x00" * 0x26

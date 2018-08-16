@@ -83,7 +83,7 @@ MML2MFVI -- extended implementation of rs3extool2-compatible MML
                 will point the channel header to that location.
                 Channels 9-16 will duplicate 1-8 unless otherwise set
                 Unset channels point to EOF
-            |XX -- shortcut for @0xXX. program change, in hex.
+            |X -- shortcut for @0x2X. program change, in hex.
             %aX -- set attack
             %yX -- set decay
             %rX -- set release
@@ -106,7 +106,7 @@ MML2MFVI -- extended implementation of rs3extool2-compatible MML
                 If there is more than one $Y, the one that will be used is
                 the most recent one set. If none are set, the last one
                 in the file is used. (Don't duplicate jump markers tho)
-            :X,Y -- conditional jump (FC) to $Y. don't know what X does.
+            :X -- conditional jump (FC) to $X.
             ;X -- hard jump (F6) to $X, for e.g. doubling channels
             
 MFVI2MML -- convert FF6 music binaries into mfvitools-format MML.
