@@ -43,7 +43,7 @@ def akao_to_mml(data, inst=None, fileid='akao'):
     ## process inst
     if inst is not None:
         for slot in xrange(0,0x10):
-            if len(inst) < slot*2: break
+            if len(inst) <= slot*2: break
             byte = inst[slot*2]
             if byte == "\x00": continue
             line = "#WAVE 0x{:02X} -- 0x{:02X}".format(slot+0x20, ord(byte))
@@ -138,6 +138,10 @@ def akao_to_mml(data, inst=None, fileid='akao'):
             for p in xrange(1,paramlen+1):
                 params.append(ord(data[loc+p]))
             while params:
+                if byte == 0xDC:
+                    if params[0] >= 32 and params[0] < 48:
+                        s = "|{:X}".format(params[0] % 16)
+                        break
                 if byte == 0xE2: #loop
                     params[0] += 1
                 s += str(params.pop(0))

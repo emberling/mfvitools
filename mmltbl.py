@@ -56,8 +56,8 @@ command_tbl = {
     ("%e1", 0): 0xD4,#enable echo
     ("%f", 1): 0xF8, #filter (rs3)
     ("%f", 2): 0xF8, #filter (ff6)
-    ("%g0", 0): 0xE7,#disable roll (retrig?)
-    ("%g1", 0): 0xE6,#enable roll (retrig?)
+    ("%g0", 0): 0xE7,#disable roll (enable gaps between notes)
+    ("%g1", 0): 0xE6,#enable roll (disable gaps between notes)
     ("%k", 1): 0xD9, #set transpose
     ("%l0", 0): 0xE5,#disable legato 
     ("%l1", 0): 0xE4,#enable legato
@@ -158,6 +158,22 @@ byte_tbl = {
     0xF8: (2, "%f"),
     0xF9: (0, "u1"),
     0xFA: (0, "u0"),
-    0xFB: (0, "%d1"),
+    0xFB: (0, '"'),
     0xFC: (2, ":"),
+    0xFD: (1, "{FD}")
    }
+
+equiv_tbl = {   #Commands that modify the same data, for state-aware modes (drums)
+                #Treats k as the same command as v, though # params is not adjusted
+    "v0,0": "v0",
+    "p0,0": "p0",
+    "v0,0,0": "v",
+    "m0,0,0": "m",
+    "|0": "@0",
+    "%a": "%y",
+    "%s": "%y",
+    "%r": "%y",
+    "|": "@0",
+    "@": "@0",
+    "o": "o0",
+    }

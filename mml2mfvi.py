@@ -2,6 +2,8 @@ import sys, os, re, traceback, copy
 from string import maketrans
 from mmltbl import *
 
+mml_log = "\n" if __name__ == "__main__" else None
+
 def byte_insert(data, position, newdata, maxlength=0, end=0):
     while position > len(data):
         data = data + "\x00"
@@ -22,8 +24,45 @@ def int_insert(data, position, newdata, length, reversed=True):
     return byte_insert(data, position, "".join(l), length)
 
 def warn(fileid, cmd, msg):
-    print "{}: WARNING: in {:<10}: {}".format(fileid, cmd, msg)
+    m = "{}: WARNING: in {:<10}: {}".format(fileid, cmd, msg)
+    print m
+    if mml_log: mml_log += m + '\n'
 
+def mlog(msg):
+    global mml_log
+    if mml_log: mml_log += msg + '\n'
+    
+class Drum:
+    def __init__(self, st):
+        s = re.findall('(.)(.[+-]?)\\1=\s*([0-9]?)([a-gr^])([+-]?)\s*(.*)', st)
+        if s: s = s[0]
+        mlog("{} -> {}".format(st, s))
+        if len(s) >= 6:
+            self.delim = s[0]
+            self.key = s[1]
+            self.octave = int(s[2]) if s[2] else 5
+            self.note = s[3] + s[4]
+            s5 = re.sub('\s*', '', s[5]).lower()
+            params = re.findall("\|[0-9a-f]|@0x[0-9a-f][0-9a-f]|%?[^|0-9][0-9,]*", s5)
+            par = {}
+            for p in params:
+                if p[0] == "@" and len(p) >= 5:
+                    if p[0:3] == "@0x":
+                        par['@0'] = str(int(p[3:5], 16))
+                        continue
+                if p[0] == '|' and len(p) >= 2:
+                    par['@0'] = str(int(p[1], 16) + 32)
+                else:
+                    pre = re.sub('[0-9]+', '0', p)
+                    suf = re.sub('%?[^0-9]', '', p, 1)
+                    if pre in equiv_tbl:
+                        pre = equiv_tbl[pre]
+                    par[pre] = suf
+            self.params = par
+        else:
+            self.delim, self.key, self.octave, self.note, self.params = None, None, None, None, None
+        mlog("DRUM: [{}] {} -- o{} {} {}".format(self.delim, self.key, self.octave, self.note, self.params))
+        
 def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
     #preprocessor
     #returns dict of (data, inst) tuples (4096, 32 bytes max)
@@ -64,12 +103,14 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
     variants = {}
     for line in mml:
         if line.startswith("#VARIANT") and len(line) > 8:
+            makedefault = True if not variants else False
             tokens = line[8:].split()
             if len(tokens) < 1: continue
             if len(tokens) == 1:
                 tokens.append('_default_')
             all_delims.update(tokens[0])
             variants[tokens[1]] = tokens[0]
+            if makedefault: variants["_default_"] = tokens[0]
     for k, v in variants.items():
         variants[k] = "".join([c for c in all_delims if c not in variants[k]])
     if not variants:
@@ -129,15 +170,19 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
         
 def mml_to_akao_main(mml, ignore='', fileid='mml'):
     mml = copy.copy(mml)
-    #final bit of preprocessing (macros)
+    #final bit of preprocessing
     macros = {}
     for line in mml:
         if line.lower().startswith("#def"):
-            pre, sep, post = line[4:].partition('=')
+            line = line[4:]
+            line = line.split('#')[0].lower()
+            if not line: continue
+            pre, sep, post = line.partition('=')
             if post:
-                pre = pre.replace("'", "").lower().strip()
+                pre = pre.replace("'", "").strip()
                 for c in ignore:
                     post = re.sub(c+".*?"+c, "", post)
+                    post = "".join(post.split())
                 macros[pre] = post.lower()
     
     stillmacros = True
@@ -149,7 +194,21 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                     stillmacros = True
                     line = line.replace("'{}'".format(k), v)
             mml[i] = line
-        
+    #drums
+    drums = {}
+    for line in mml:
+        if line.lower().startswith("#drum"):
+            s = line[5:].strip()
+            s = s.split('#')[0].lower()
+            for c in ignore:
+                s = re.sub(c+".*?"+c, "", s)
+            for c in ["~", "/", "`", "\?", "_"]:
+                s = re.sub(c, '', s)
+            d = Drum(s.strip())
+            if d.delim:
+                if d.delim not in drums: drums[d.delim] = {}
+                drums[d.delim][d.key] = d
+    
     for i, line in enumerate(mml):
         mml[i] = line.split('#')[0].lower()
             
@@ -159,11 +218,12 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
     defaultlength = 8
     thissegment = 1
     next_jumpid = 1
+    state = {}
     jumpout = []
     
     while len(m):
         command = m.pop(0)
-        
+
         #conditionally executed statements
         if command in ignore:
             while len(m):
@@ -187,7 +247,95 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                 if n <= 16 and n >= 1:
                     channels[n] = len(data)
             continue
-        
+        #drum mode
+        elif command in drums:
+            mls, dms = [], []
+            drumset = drums[command]
+            while len(m):
+                if m[0] != command:
+                    dms.append(m.pop(0))
+                else:
+                    m.pop(0)
+                    break
+            dbgdms = "".join(dms)
+            lockstate = False
+            if len(dms):
+                if dms[0] in "1234567890":
+                    state["o0"] = dms.pop(0)
+                elif dms[0] == ">":
+                    co = dms.pop(0)
+                    while dms[0] == ">":
+                        co += dms.pop(0)
+                    state["o0"] += len(co)
+                elif dms[0] == "<":
+                    co = dms.pop(0)
+                    while dms[0] == "<":
+                        co += dms.pop(0)
+                    state["o0"] -= len(co)
+            while len(dms):
+                dcom = dms.pop(0)
+                if len(dms):
+                    if dms[0] in "+-":
+                        dcom += dms.pop(0)
+                if dcom == "\\":
+                    lockstate = True if not lockstate else False
+                elif dcom == "!":
+                    rcom = dms.pop(0)
+                    if rcom == "!":
+                        if "o0" in state:
+                            state = {"o0": state["o0"]}
+                        else:
+                            state = {}
+                        continue
+                    if rcom == "%": rcom += dms.pop(0)
+                    while len(dms):
+                        if dms[0] in "0,":
+                            rcom += dms.pop(0)
+                        else: break
+                    if rcom in equiv_tbl:
+                        rcom = equiv_tbl[rcom]
+                    state.pop(rcom, None)
+                elif dcom in "0123456789^.":
+                    mls.extend(dcom)
+                elif dcom in drumset:
+                    params = {}
+                    for k, v in drumset[dcom].params.items():
+                        if lockstate and k != "@0": continue
+                        if k in state:
+                            if state[k] != v:
+                                params[k] = v
+                        elif k == "%y" and not ( "%a0" in state or "%y0" in state or 
+                                                 "%s0" in state or "%r0" in state):
+                             pass
+                        else:
+                            params[k] = v
+                    s = ""
+                    for k, v in params.items():
+                        t = (re.sub('[0-9,]', '', k) + v).strip()
+                        s = t + s if k == "@0" else s + t
+                        if k == "%y" or k == "@0":
+                            state.pop("%a0", None)
+                            state.pop("%y0", None)
+                            state.pop("%s0", None)
+                            state.pop("%r0", None)
+                        if k != "%y": state[k] = v
+                    if 'o0' in state:
+                        if isinstance(state['o0'], str): state['o0'] = int(state['o0'])
+                        ochg = drumset[dcom].octave - int(state['o0'])
+                        if ochg < 0:
+                            s += ">" * abs(ochg)
+                        else: s += "<" * ochg
+                        state['o0'] += ochg
+                    else:
+                        s += "o{}".format(drumset[dcom].octave)
+                        state['o0'] = drumset[dcom].octave
+                    s += drumset[dcom].note
+                    mls.extend(list(s))
+            mlog("drum: processed {} -> {}".format(dbgdms, "".join(mls)))
+            mls.extend(m)
+            m = mls
+            continue
+            
         #populate command variables
         if command == "%": command += m.pop(0)
         prefix = command
@@ -308,6 +456,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
         #case: end of segment
         elif prefix == ";":
             defaultlength = 8
+            state = {}
             if params:
                 if params[0] in targets:
                     target = targets[params[0]]
@@ -420,6 +569,13 @@ if __name__ == "__main__":
             clean_end()
         print "Wrote {}".format(thisfn)
         
+    try:
+        with open(os.path.join(os.path.split(sys.argv[0])[0],"mml_log.txt"), 'w') as f:
+            f.write(mml_log)
+    except IOError:
+        print "Couldn't write log file, displaying..."
+        print mml_log
+            
     print "Conversion successful."
     print
     
