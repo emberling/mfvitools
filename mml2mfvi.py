@@ -24,13 +24,14 @@ def int_insert(data, position, newdata, length, reversed=True):
     return byte_insert(data, position, "".join(l), length)
 
 def warn(fileid, cmd, msg):
+    global mml_log
     m = "{}: WARNING: in {:<10}: {}".format(fileid, cmd, msg)
     print m
-    if mml_log: mml_log += m + '\n'
+    if __name__ == "__main__": mml_log += m + '\n'
 
 def mlog(msg):
     global mml_log
-    if mml_log: mml_log += msg + '\n'
+    if __name__ == "__main__": mml_log += msg + '\n'
     
 class Drum:
     def __init__(self, st):
@@ -181,7 +182,11 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
             if post:
                 pre = pre.replace("'", "").strip()
                 for c in ignore:
-                    post = re.sub(c+".*?"+c, "", post)
+                    try:
+                        post = re.sub(c+".*?"+c, "", post)
+                    except Exception:
+                        c = "\\" + c
+                        post = re.sub(c+".*?"+c, "", post)
                     post = "".join(post.split())
                 macros[pre] = post.lower()
     
@@ -201,7 +206,11 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
             s = line[5:].strip()
             s = s.split('#')[0].lower()
             for c in ignore:
-                s = re.sub(c+".*?"+c, "", s)
+                try:
+                    s = re.sub(c+".*?"+c, "", s)
+                except Exception:
+                    c = "\\" + c
+                    s = re.sub(c+".*?"+c, "", s)
             for c in ["~", "/", "`", "\?", "_"]:
                 s = re.sub(c, '', s)
             d = Drum(s.strip())
@@ -524,7 +533,8 @@ def clean_end():
     quit()
     
 if __name__ == "__main__":
-    
+    mml_log = "\n"
+
     print "mfvitools MML to AKAO SNESv4 converter"
     print
     
