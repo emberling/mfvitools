@@ -190,15 +190,24 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                     post = "".join(post.split())
                 macros[pre] = post.lower()
     
-    stillmacros = True
-    while stillmacros:
-        stillmacros = False
-        for i, line in enumerate(mml):
-            for k, v in macros.items():
-                if "'{}'".format(k) in line:
-                    stillmacros = True
-                    line = line.replace("'{}'".format(k), v)
-            mml[i] = line
+    #stillmacros = True
+    #while stillmacros:
+    #    stillmacros = False
+    #    for i, line in enumerate(mml):
+    #        for k, v in macros.items():
+    #            if "'{}'".format(k) in line:
+    #                stillmacros = True
+    #                line = line.replace("'{}'".format(k), v)
+    #        mml[i] = line
+    for i, line in enumerate(mml):
+        while True:
+            r = re.search("'(.*?)'", line)
+            if not r: break
+            m = r.group(1)
+            s = macros[m] if m in macros else ""
+            line = line.replace(r.group(0), s, 1)
+        mml[i] = line
+            
     #drums
     drums = {}
     for line in mml:
@@ -268,6 +277,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                     break
             dbgdms = "".join(dms)
             lockstate = False
+            silent = False
             if len(dms):
                 if dms[0] in "1234567890":
                     state["o0"] = dms.pop(0)
@@ -288,6 +298,8 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                         dcom += dms.pop(0)
                 if dcom == "\\":
                     lockstate = True if not lockstate else False
+                elif dcom == ":":
+                    silent = True if not silent else False
                 elif dcom == "!":
                     rcom = dms.pop(0)
                     if rcom == "!":
@@ -339,7 +351,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                         s += "o{}".format(drumset[dcom].octave)
                         state['o0'] = drumset[dcom].octave
                     s += drumset[dcom].note
-                    mls.extend(list(s))
+                    if not silent: mls.extend(list(s))
             mlog("drum: processed {} -> {}".format(dbgdms, "".join(mls)))
             mls.extend(m)
             m = mls
@@ -373,12 +385,16 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
             if c in "+-":
                 modifier = c
         thisnumber = ""
+        is_negative = False
         for c in command[len(prefix):] + " ":
             if c in "1234567890":
                 thisnumber += c
+            elif c == "-" and prefix not in "abcdefg^r":
+                is_negative = True
             elif thisnumber:
-                params.append(int(thisnumber))
+                params.append(0x100-int(thisnumber) if is_negative else int(thisnumber))
                 thisnumber = ""
+                is_negative = False
         dots = len([c for c in command if c == "."])
         
         if (prefix, len(params)) not in command_tbl and len(params):
@@ -428,10 +444,6 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                     params[0] -= 1
                 else:
                     params.append(1)
-            #special case: portamento
-            if prefix == "m" and len(params) == 2 and '-' in modifier:
-                if params[1] > 0:
-                    params[1] = 0x100 - params[1]
             #special case: end loop adds jump target if j,1 is used
             if prefix == "]":
                 while len(jumpout):
@@ -497,6 +509,16 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                 warn(fileid, command, "Parameter {} out of range, substituting 1".format(params[0]))
                 params[0] = 1
             data += "\xF5" + chr(params[0]) + int_insert("  ",0,target,2)
+        #case: hard jump without ending segment
+        elif prefix == "%j":
+            if len(params)==1:
+                if params[0] in targets:
+                    target = targets[params[0]]
+                else:
+                    target = len(data)
+                    pendingjumps[len(data)+1] = params[0]
+            else: continue
+            data += "\xF6" + int_insert("  ",0,target,2)
         #case: conditional jump
         elif prefix == ":" and len(params) == 1:
             if params[0] in targets:

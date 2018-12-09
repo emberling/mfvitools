@@ -58,6 +58,7 @@ command_tbl = {
     ("%f", 2): 0xF8, #filter (ff6)
     ("%g0", 0): 0xE7,#disable roll (enable gaps between notes)
     ("%g1", 0): 0xE6,#enable roll (disable gaps between notes)
+    #("%k", 1): 0xF6 - jump to marker, segment continues
     ("%k", 1): 0xD9, #set transpose
     ("%l0", 0): 0xE5,#disable legato 
     ("%l1", 0): 0xE4,#enable legato
@@ -103,7 +104,7 @@ command_tbl = {
     ("[", 1): 0xE2,  #start loop
     ("]", 0): 0xE3  #end loop
     #(":", 1): 0xFC - jump to marker if event signal is sent
-    #(";", 1): 0xF6 - jump to marker in another channel
+    #(";", 1): 0xF6 - jump to marker, end segment
     }
 
 byte_tbl = {
