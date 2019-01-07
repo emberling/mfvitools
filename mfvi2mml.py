@@ -56,8 +56,13 @@ def akao_to_mml(data, inst=None, fileid='akao'):
     #common custom song address base (26 00) is an impossible ROM header so if
     #this is the first two bytes, we know it's an SPCrip.
     if data[0:2] == "\x26\x00":
+        print "detected no header (26 00 base)"
         data = int_insert("  ", 0, len(data), 2) + data
-    
+    #alternately, it is almost certainly an SPCrip if $4-5 == $14-15 != $24-25
+    elif data[4] == data[0x14] and data[0x14] != data[0x24]:
+        if data[5] == data[0x15] and data[0x15] != data[0x25]:
+            print "detected no header ($4 == $14 != $24)"
+            data = int_insert("  ", 0, len(data), 2) + data
     unskew.addr = ord(data[2]) + (ord(data[3]) << 8)
     print "unskew.addr {}".format(hex(unskew.addr))
     
