@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
+
 import sys, os, re, traceback, copy
-from string import maketrans
 from mmltbl import *
 
 mml_log = "\n" if __name__ == "__main__" else None
@@ -26,7 +27,7 @@ def int_insert(data, position, newdata, length, reversed=True):
 def warn(fileid, cmd, msg):
     global mml_log
     m = "{}: WARNING: in {:<10}: {}".format(fileid, cmd, msg)
-    print m
+    print(m)
     if __name__ == "__main__": mml_log += m + '\n'
 
 def mlog(msg):
@@ -83,7 +84,7 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
                     tokens[1] = tokens[1][0:len(tokens[2])]
                 else:
                     tokens[2] = tokens[2][0:len(tokens[1])]
-            transes.append(maketrans(tokens[1], tokens[2]))
+            transes.append(str.maketrans(tokens[1], tokens[2]))
     for trans in transes:
         newmml = []
         for line in mml:
@@ -112,13 +113,13 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
             all_delims.update(tokens[0])
             variants[tokens[1]] = tokens[0]
             if makedefault: variants["_default_"] = tokens[0]
-    for k, v in variants.items():
+    for k, v in list(variants.items()):
         variants[k] = "".join([c for c in all_delims if c not in variants[k]])
     if not variants:
         variants['_default_'] = ''.join([c for c in all_delims])
     if variant:
         if variant not in variants:
-            print "mml error: requested unknown variant '{}'\n".format(variant)
+            print("mml error: requested unknown variant '{}'\n".format(variant))
         variants = {variant: variants[variant]}
         
     #generate instruments
@@ -144,10 +145,10 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
                     except:
                         warn(fileid, "#WAVE {}, {}".format(tokens[0], tokens[1]), "Couldn't parse token {}".format(t))
                         continue
-                if numbers[0] not in range(0x20,0x30):
+                if numbers[0] not in list(range(0x20,0x30)):
                     warn(fileid, "#WAVE {}, {}".format(hex(numbers[0]), hex(numbers[1])), "Program ID out of range (expected 0x20 - 0x2F / 32 - 47)")
                     continue
-                if numbers[1] not in range(0, 256):
+                if numbers[1] not in list(range(0, 256)):
                     warn(fileid, "#WAVE {}, {}".format(hex(numbers[0]), hex(numbers[1])), "Sample ID out of range (expected 0x00 - 0xFF / 0 - 255)")
                     continue
                 iset[numbers[0]] = numbers[1]
@@ -207,11 +208,90 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
         while True:
             r = re.search("'(.*?)'", line)
             if not r: break
-            m = r.group(1)
+            mx = r.group(1)
+            #
+            m = re.search("([^+\-*]+)", mx).group(1)
+            tweaks = {}
+            tweak_text = ""
+            while True:
+                twx = re.search("([+\-*])([%a-z]+)([0-9.,]+)", mx)
+                if not twx: break
+                tweak_text += twx.group(0)
+                cmd = twx.group(2) + ''.join([c for c in twx.group(3) if c == ','])
+                tweaks[cmd] = (twx.group(1), twx.group(3))
+                mx = mx.replace(twx.group(0), "", 1)
+            #
             s = macros[m] if m in macros else ""
+            p = 0
+            if tweaks:
+                # "o,,": ("+", ",1,")
+                skip = ignore + "\"'{"
+                sq = list(s)
+                sr = ""
+                while sq:
+                    c = sq.pop(0)
+                    if c in skip:
+                        endat = "}" if c=="{" else c
+                        if sq: c += sq.pop(0)
+                        while sq:
+                            cc = sq.pop(0)
+                            if cc == endat:
+                                if endat == "'": c += tweak_text
+                                c += cc
+                                break
+                            else: c += cc
+                        sr += c
+                        continue
+                    if sq and c == "%":
+                        c += sq.pop(0)
+                    d = ""
+                    while sq and sq[0] in "1234567890,.+-x":
+                        d += sq.pop(0)
+                    cmd = c + ''.join([ch for ch in d if ch == ','])
+                    if cmd in tweaks:
+                        d = d.split(',')
+                        e = tweaks[cmd][1].split(',')
+                        sign = tweaks[cmd][0]
+                        for j, ee in enumerate(e):
+                            if not ee:
+                                c += f"{d[j]},"
+                                continue
+                            try: en = int(ee)
+                            except:
+                                try: en = int(ee,16)
+                                except:
+                                    try: en = float(ee)
+                                    except:
+                                        warn("error parsing {} into {}".format(r.group(0), s))
+                                        en = 0
+                            try: dn = int(d[j])
+                            except:
+                                try: dn = int(d[j],16)
+                                except:
+                                    warn("error parsing {} into {}".format(r.group(0), s))      
+                                    dn = 0
+                            if sign is "*":
+                                result = dn * en
+                            elif sign is "-":
+                                result = dn - en
+                            elif sign is "+":
+                                result = dn + en
+                            if result < 0: result = 0
+                            if ((cmd is "v" or cmd is "p") and j==0) or ((cmd is "v," or cmd is "p,") and j==1):
+                                if result > 127: result = 127
+                            else:
+                                if result > 255: result = 255
+                            #apply new values
+                            c += f"{int(result)},"
+                        c = c.rstrip(',')
+                    else: c += d
+                    sr += c
+                s = sr
+                                                    
             line = line.replace(r.group(0), s, 1)
-        mml[i] = line
             
+        mml[i] = line
+        
     #drums
     drums = {}
     for line in mml:
@@ -551,7 +631,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
     header = int_insert("\x00"*0x26, 0, len(data)-2, 2)
     header = int_insert(header, 2, 0x26, 2)
     header = int_insert(header, 4, len(data), 2)
-    for i in xrange(0,8):
+    for i in range(0,8):
         if i not in channels:
             channels[i] = len(data)
     for k, v in channels.items():
@@ -563,27 +643,27 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
     return data
     
 def clean_end():
-    print "Processing ended."
-    raw_input("Press enter to close.")
+    print("Processing ended.")
+    input("Press enter to close.")
     quit()
     
 if __name__ == "__main__":
     mml_log = "\n"
 
-    print "mfvitools MML to AKAO SNESv4 converter"
-    print
+    print("mfvitools MML to AKAO SNESv4 converter")
+    print()
     
     if len(sys.argv) >= 2:
         fn = sys.argv[1]
     else:
-        print "Enter MML filename.."
-        fn = raw_input(" > ").replace('"','').strip()
+        print("Enter MML filename..")
+        fn = input(" > ").replace('"','').strip()
     
     try:
         with open(fn, 'r') as f:
             mml = f.readlines()
     except IOError:
-        print "Error reading file {}".format(fn)
+        print("Error reading file {}".format(fn))
         clean_end()
 
     try:
@@ -599,29 +679,29 @@ if __name__ == "__main__":
         thisfn = fn + "_data" + vfn
         try:
             with open(thisfn, 'wb') as f:
-                f.write(v[0])
+                f.write(bytes(v[0], encoding='latin-1'))
         except IOError:
-            print "Error writing file {}".format(thisfn)
+            print("Error writing file {}".format(thisfn))
             clean_end()
-        print "Wrote {} - {} bytes".format(thisfn, hex(len(v[0])))
+        print("Wrote {} - {} bytes".format(thisfn, hex(len(v[0]))))
         
         thisfn = fn + "_inst" + vfn
         try:
             with open(thisfn, 'wb') as f:
-                f.write(v[1])
+                f.write(bytes(v[1], encoding='latin-1'))
         except IOError:
-            print "Error writing file {}".format(thisfn)
+            print("Error writing file {}".format(thisfn))
             clean_end()
-        print "Wrote {}".format(thisfn)
+        print("Wrote {}".format(thisfn))
         
     try:
         with open(os.path.join(os.path.split(sys.argv[0])[0],"mml_log.txt"), 'w') as f:
             f.write(mml_log)
     except IOError:
-        print "Couldn't write log file, displaying..."
-        print mml_log
+        print("Couldn't write log file, displaying...")
+        print(mml_log)
             
-    print "Conversion successful."
-    print
+    print("Conversion successful.")
+    print()
     
     clean_end()
