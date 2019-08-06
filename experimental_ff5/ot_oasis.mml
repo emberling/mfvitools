@@ -29,9 +29,9 @@
 #def mba= |2 o5 'm' p96 m %a12
 #def bas= |5 o8 'b' p64 m48,18,199 %y0%s2%r6
 
-#def conga= ~o5~ p72 m /|8/
-#def co= ~|8~/o5/
-#def cs= ~|9~/o6/
+#def conga= ~o5~ p72 m /|7/
+#def co= ~|7~/o5/
+#def cs= ~|7~/o6/
 #def ch= 'c*v1.25'
 #def cl= 'c*v.6'
 #def cm= 'c*v.8'

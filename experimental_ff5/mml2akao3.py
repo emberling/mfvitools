@@ -644,24 +644,13 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
             warn(fileid, command, "Jump destination {} not found in file".format(v))
     #set up header
     header = int_insert("\x00"*0x16, 0, len(data)-2, 2)
-    for h in header: print(f"{ord(h):02x} ", end="")
-    print()
     header = int_insert(header, 2, 0x16, 2)
-    for h in header: print(f"{ord(h):02x} ", end="")
-    print()
     for i in range(1,8):
         if i not in channels:
             channels[i] = len(data)-2
-    for h in header: print(f"{ord(h):02x} ", end="")
-    print()
-    print(channels.items())
     for k, v in channels.items():
         header = int_insert(header, 2 + k*2, v, 2)
-    for h in header: print(f"{ord(h):02x} ", end="")
-    print()
     header = int_insert(header, 0x14, len(data), 2)
-    for h in header: print(f"{ord(h):02x} ", end="")
-    print()
     data = byte_insert(data, 0, header, 0x16)
     
     return data
