@@ -29,7 +29,8 @@ try:
     data = variants[variant_to_use][0]
     inst = variants[variant_to_use][1]
     
-    if len(data) < 0x1000:
+    data_size = len(data)
+    if data_size < 0x1000:
         data += b"\x00" * (0x1000 - len(data))
         
     with open(ROMFILE, 'r+b') as f:
@@ -44,4 +45,7 @@ except Exception as e:
     print(e)
     input()
     
+padinfo = ""
+if len(data) > data_size: padinfo = f" (padded to 0x{len(data):X})"
+print(f"Wrote 0x{data_size:X} bytes{padinfo}.")
 input()
