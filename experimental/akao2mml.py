@@ -1,4 +1,4 @@
-VERSION = "alpha 0.04.1"
+VERSION = "alpha 0.04.2"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -7,7 +7,7 @@ CONFIG_EXPAND_NOTES_TO_THREE = False
 CONFIG_REMOVE_REDUNDANT_OCTAVES = True
 
 DEBUG_STEP_BY_STEP = False
-DEBUG_LOOP_VERBOSE = True
+DEBUG_LOOP_VERBOSE = False
 
 import sys, itertools
 
@@ -649,7 +649,7 @@ formats["rnh"].use_expression = True
 formats["rnh"].tempo_scale = 1 #unknown
 formats["rnh"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "^", "r"]
 formats["rnh"].duration_table = [0xC0, 0x60, 0x48, 0x30, 0x24, 0x18, 0x0C, None]
-formats["rnh"].low_octave_notes = range(0,12)
+formats["rnh"].low_octave_notes = range(0x30,0x90)
 formats["rnh"].note_sort_by_duration = False
 formats["rnh"].dynamic_note_duration = True
 formats["rnh"].note_table_octaves = 2
@@ -685,7 +685,7 @@ formats["rnh"].bytecode = {
     0x1A: Code(1, "m"),
     0x1B: Code(4, "v", params=[P(1), Scaled(2, 4), SixBitFloorScaled(3, 192, 21)]),
     0x1C: Code(1, "v"),
-    0x1D: Code(3, "p0,", params=[P(1), Scaled(2, .25)]),
+    0x1D: Code(3, "p0,", params=[Scaled(1, 2), Scaled(2, 1)]),
     0x1E: Code(1, "p"),
     0x1F: Code(1, "%n1"),
     0x20: Code(1, "%n0"),
@@ -880,21 +880,13 @@ def trace_segments(data, segs):
             while octave_rel < targ:
                 octave_rel += 1
                 rel_octave_delta += 1
-                
-    def rel_octave_set_and_append(targ):
-        rel_octave_set(targ)
-        if rel_octave_delta > 0:
-            append_before += "<" * abs(rel_octave_delta)
-        elif rel_octave_delta < 0:
-            append_before += ">" * abs(rel_octave_delta)
         
-    def handle_append_before(a=None):
-        if a is None:
-            a = append_before
-        if loc in append_before_items:
-            if append_before_items[loc] != a:
-                print(f"{loc:04X}: warning: ambiguous prepend ({append_before_items[loc]}) ({a})")
-        append_before_items[loc] = a
+    def handle_append(before=None):
+        if before:
+            if loc in append_before_items:
+                if append_before_items[loc] != before:
+                    print(f"{loc:04X}: warning: ambiguous prepend ({append_before_items[loc]}) ({before})")
+            append_before_items[loc] = before
                 
     # traverse data starting from header pointers
     # goals:
@@ -1001,7 +993,7 @@ def trace_segments(data, segs):
             elif cmd[0] in format.loop_end:
                 if not loop_stack:
                     print("warning: segment terminated by loop end")
-                    handle_append_before()
+                    handle_append(before=append_before)
                     break
                 else:
                     startloc, iterations, counter = loop_stack[-1]
@@ -1009,7 +1001,7 @@ def trace_segments(data, segs):
                     if iterations == 0 and format.zero_loops_infinite:
                         print("ending segment via infinite loop")
                         replace_items[loc] = ";"
-                        handle_append_before()
+                        handle_append(before=append_before)
                         break
                     if counter >= iterations:
                         ifprint(f"{loc:04X}: loop ended at {iterations} iterations", DEBUG_LOOP_VERBOSE)
@@ -1017,9 +1009,9 @@ def trace_segments(data, segs):
                     else:
                         counter += 1
                         ifprint(f"looping back to {startloc:04X} for {counter}rd iteration", DEBUG_LOOP_VERBOSE)
-                        next_loc = startloc
+                        handle_append(before=append_before)
+                        loc = startloc
                         loop_stack[-1] = [startloc, iterations, counter]
-                        handle_append_before()
                         continue
             elif cmd[0] in format.loop_break or cmd[0] in format.volta_jump:
                 rel_octave_set(0)
@@ -1035,7 +1027,7 @@ def trace_segments(data, segs):
                         
             #do stuff if it's a jump or end
             if cmd[0] in format.end_track:
-                handle_append_before()
+                handle_append(before=append_before)
                 break
             if cmd[0] in format.hard_jump or do_jump:
                 next_loc = shift(cmdinfo.dest(cmd))
@@ -1044,7 +1036,7 @@ def trace_segments(data, segs):
                 rel_octave_set(0)
                 if next_loc in this_trace_segs:
                     #print(f"We've been here before. Ending segment")
-                    handle_append_before()
+                    handle_append(before=append_before)
                     break
                 else:
                     this_trace_segs.append(loc)
@@ -1059,9 +1051,13 @@ def trace_segments(data, segs):
                 rel_octave_set(-1)
             elif "note" in cmdinfo.type:
                 rel_octave_set(0)
-                                
+            if rel_octave_delta > 0:
+                append_before += "<" * abs(rel_octave_delta)
+            elif rel_octave_delta < 0:
+                append_before += ">" * abs(rel_octave_delta)
+                
             #move forward
-            handle_append_before()
+            handle_append(before=append_before)
             loc = next_loc
             if loc >= len(data):
                 print("Segment terminated unexpectedly")
