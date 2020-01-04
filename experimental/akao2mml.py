@@ -1,12 +1,20 @@
-VERSION = "alpha 0.04.0"
+VERSION = "alpha 0.04.1"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
 CONFIG_USE_OCTAVE_MACROS = True
+CONFIG_EXPAND_NOTES_TO_THREE = False
 CONFIG_REMOVE_REDUNDANT_OCTAVES = True
 
-import sys
+DEBUG_STEP_BY_STEP = False
+DEBUG_LOOP_VERBOSE = True
 
+import sys, itertools
+
+def ifprint(text, condition, **kwargs):
+    if condition:
+        print(text, **kwargs)
+        
 class Format:
     def __init__(self, sort_as, id, display_name):
         self.id = id
@@ -18,7 +26,9 @@ class Format:
         self.sequence_loc = 0
         self.sequence_relative = False
         
+#######################
 #### command types ####
+#######################
 
 class Code:
     def __init__(self, length, symbol, params=[], collapse_empty=False, type="generic", **kwargs):
@@ -36,6 +46,8 @@ class Code:
         for i, param in enumerate(self.params):
             if self.collapse_empty and not param(cmd):
                 continue
+            if "count_param" in self.kwargs and param(cmd) <= 2:
+                continue
             #print(f"{cmd[0]:02X}: param {param}")
             text += f"{param(cmd)}"
             if len(self.params) > i+1:
@@ -45,7 +57,7 @@ class Code:
     def get(self, cmd, keyword):
         try:
             return self.params[self.kwargs[keyword]-1](cmd)
-        except KeyError:
+        except (KeyError, AttributeError):
             print(f"warning: couldn't access keyword {keyword} in {' '.join([f'{b:02X}' for b in cmd])}")
             return None
             
@@ -62,9 +74,10 @@ class Note(Code):
         self.dest = None
       
 class KawakamiNote(Note):
-    def __init__(self, note, dur):
+    def __init__(self, note, idx):
         self.type = "note"
-        if dur is None:
+        self.idx = idx
+        if idx == 7:
             self.note = note
             self.length = 2
             self.symbol = note + '&'
@@ -78,8 +91,17 @@ class KawakamiNote(Note):
             self.dest = None
             
     def write(self, cmd, loc):
-        dur = dynamic_note_durations[loc]
+        if self.params:
+            dur = self.params[0](cmd)
+        else:
+            try:
+                dur = dynamic_note_durations[loc]
+            except KeyError:
+                print(f"{loc:04X}: warning: no duration info for note {cmd[0]:02X} ({self.symbol})")
+                dur_table = [d for d in format.duration_table if isinstance(d, int)]
+                dur = dur_table[self.idx]
         text = specify_note_duration(self.note, dur)
+        return text
         
 class DoubleCode(Code):
     def __init__(self, length, first_symbol, second_symbol, first_params=[], second_params=[], collapse_empty=False, type="generic", **kwargs):
@@ -268,22 +290,29 @@ class ExpressionCode(VolumeCode):
         self.type = "expression"
         if "expression_param" in kwargs:
             self.expression_param = kwargs["expression_param"] - 1
+            self.volume_param = 0
         else:
             self.expression_param = 0
+            self.volume_param = 0
 
 class NoteTable(Code):
     def __init__(self, length, symbol, **kwargs):
         Code.__init__(self, length, symbol, **kwargs)
-        self.type = "note_table"
+        self.type = "dur_table"
 
     def write(self, cmd, _):
-        text = f"\n{{Note table: "
+        text = f"\n{{'Note table: "
         for param in self.params:
             text += f"{param(cmd)} "
-        text = text.strip() + "}\n"
+        text = text.strip() + "'}\n"
         return text
+
+    def get(self, cmd, _ = False):
+        return [param(cmd) for param in self.params]
         
+#########################
 #### parameter types ####
+#########################
 
 def P(pos):
     def readp(cmd):
@@ -319,10 +348,12 @@ def SixBitFloorScaled(pos, floor, scale): #kawakami vibrato
         return min(0xFF, floor + round(val * scale))
     return readp
     
-def IncrementElide(pos):
+def Increment(pos):
     def readp(cmd):
-        val = cmd[pos] + 1
-        return val if (val > 2) else 0
+        val = cmd[pos]
+        if format.zero_loops_infinite and val == 0:
+            return 0
+        return val + 1
     return readp
     
 def Signed(pos):
@@ -339,6 +370,17 @@ def ScaledSigned(pos, scale):
         if num >= 0x80:
             num -= 0x100
         return min(0xFF, int(num * scale))
+    return readp
+    
+def ShiftedSigned(pos, delta):
+    def readp(cmd):
+        num = cmd[pos]
+        if num >= 0x80:
+            num -= 0x100
+        num += delta
+        if abs(num) > 0xFF:
+            print(f"{pos:04X}: {' '.join([f'{b:02X}' for b in cmd])} delta {delta}: warning: shifted value {num} out of range")
+        return num
     return readp
     
 def Fixed(val):
@@ -382,6 +424,7 @@ formats["ff4"].low_octave_notes = []
 formats["ff4"].note_sort_by_duration = False
 formats["ff4"].dynamic_note_duration = False
 formats["ff4"].first_note_id = 0
+formats["ff4"].zero_loops_infinite = False
 formats["ff4"].bytecode = {
     0xD2: Code(4, "t", params=[Multi(1,2), TempoScale(3)], collapse_empty=True, env_param=1),
     0xD3: Comment(2, "nop {}", params=[P(1)]),
@@ -397,7 +440,7 @@ formats["ff4"].bytecode = {
     0xDD: Code(2, "%r", params=[P(1)]), #GAIN release -> ADSR sustain rate
     0xDE: Comment(2, "Duration {}%", params=[P(1)]),
     0xDF: Code(2, "%c", params=[P(1)]),
-    0xE0: Code(2, "[", params=[IncrementElide(1)], collapse_empty=True, count_param=1),
+    0xE0: Code(2, "[", params=[Increment(1)], collapse_empty=True, count_param=1),
     0xE1: Code(1, "<"),
     0xE2: Code(1, ">"),
     0xE3: Comment(1, "nop"),
@@ -457,6 +500,7 @@ formats["rs1"].low_octave_notes = []
 formats["rs1"].note_sort_by_duration = False
 formats["rs1"].dynamic_note_duration = False
 formats["rs1"].first_note_id = 0
+formats["rs1"].zero_loops_infinite = False
 formats["rs1"].bytecode = {
     0xD2: Code(2, "t", params=[TempoScale(1)]),
     0xD3: Code(3, "t", params=[P(1), TempoScale(2)], env_param=1),
@@ -486,7 +530,7 @@ formats["rs1"].bytecode = {
     0xEB: OctaveCode(2, "o", params=[P(1)], octave_param=1),
     0xEC: Code(1, "<"),
     0xED: Code(1, ">"),
-    0xEE: Code(2, "[", params=[IncrementElide(1)], collapse_empty=True, count_param=1),
+    0xEE: Code(2, "[", params=[Increment(1)], collapse_empty=True, count_param=1),
     0xEF: Code(1, "]"),
     0xF0: Jump(4, "j", params=[P(1)], dest=Multi(1,2), volta_param=1),
     0xF1: Jump(3, ";", dest=Multi(1,2)),
@@ -532,7 +576,7 @@ formats["ffmq"].low_octave_notes = []
 formats["ffmq"].note_sort_by_duration = False
 formats["ffmq"].dynamic_note_duration = False
 formats["ffmq"].first_note_id = 0
-formats["ffmq"].note_table_octaves = 1
+formats["ffmq"].zero_loops_infinite = False
 formats["ffmq"].bytecode = {
     0xD2: VolumeCode(2, "v", params=[Scaled(1, .5)], volume_param=1),
     0xD3: VolumeCode(3, "v", params=[P(1), Scaled(2, .5)], env_param=1, volume_param=2),
@@ -564,7 +608,7 @@ formats["ffmq"].bytecode = {
     0xED: Code(2, "%s", params=[P(1)]),
     0xEE: Code(2, "%r", params=[P(1)]),
     0xEF: Code(1, "%y"),
-    0xF0: Code(2, "[", params=[IncrementElide(1)], collapse_empty=True, count_param=1),
+    0xF0: Code(2, "[", params=[Increment(1)], collapse_empty=True, count_param=1),
     0xF1: Code(1, "]"),
     0xF2: Code(1, ";"),
     0xF3: Code(2, "t", params=[TempoScale(1)]),
@@ -604,15 +648,16 @@ formats["rnh"].header_type = 6
 formats["rnh"].use_expression = True
 formats["rnh"].tempo_scale = 1 #unknown
 formats["rnh"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "^", "r"]
-formats["rnh"].duration_table = [0x03, 0x60, 0x48, 0x30, 0x24, 0x18, 0x0C, None]
+formats["rnh"].duration_table = [0xC0, 0x60, 0x48, 0x30, 0x24, 0x18, 0x0C, None]
 formats["rnh"].low_octave_notes = range(0,12)
 formats["rnh"].note_sort_by_duration = False
 formats["rnh"].dynamic_note_duration = True
 formats["rnh"].note_table_octaves = 2
 formats["rnh"].first_note_id = 0x30
+formats["rnh"].zero_loops_infinite = True
 formats["rnh"].bytecode = {
     0x00: Code(1, ";"),
-    0x01: Code(2, "%x"),
+    0x01: Code(2, "%x", params=[P(1)]),
     0x02: Comment(2, "02 {}", params=[P(1)]),
     0x03: ExpressionCode(2, "{e}", params=[Scaled(1, .5)], expression_param=1),
     0x04: Comment(3, "04 {} {}", params=[P(1), P(2)]),
@@ -622,7 +667,7 @@ formats["rnh"].bytecode = {
     0x08: Comment(2, "08 {}", params=[P(1)]),
     0x09: Comment(1, "09"),
     0x0A: NoteTable(8, "{L}", params=[P(1), P(2), P(3), P(4), P(5), P(6), P(7)]),
-    0x0B: Code(2, "%k", params=[Signed(1)]),
+    0x0B: Code(2, "%k", params=[ShiftedSigned(1, -36)]),
     0x0C: VolumeCode(2, "v", params=[Scaled(1, .5)], volume_param=1),
     0x0D: VolumeCode(3, "v", params=[P(1), Scaled(1, .5)], env_param=1, volume_param=2),
     0x0E: Code(2, "p", params=[Scaled(1, .5)]),
@@ -633,21 +678,27 @@ formats["rnh"].bytecode = {
     0x13: Code(2, "%y", params=[P(1)]),
     0x14: Code(2, "%s", params=[P(1)]),
     0x15: Code(2, "%r", params=[P(1)]),
-    0x16: Comment(1, "16"),
-    0x17: Comment(3, "17 {} {}", params=[P(1), P(2)]),
-    0x18: Comment(3, "18 {} {}", params=[P(1), P(2)]),
+    0x16: Comment(1, "%y"),
+    0x17: Comment(2, "17 {}", params=[P(1)]),
+    0x18: Comment(2, "18 {}", params=[P(1)]),
     0x19: Code(4, "m", params=[P(1), Scaled(2, 4), SixBitFloorScaled(3, 192, 21)]),
-    0x20: Comment(1, "20"),
-    0x21: Comment(1, "21"),
-    0x22: Comment(1, "22"),
-    0x23: Comment(1, "23"),
-    0x24: Comment(1, "24"),
+    0x1A: Code(1, "m"),
+    0x1B: Code(4, "v", params=[P(1), Scaled(2, 4), SixBitFloorScaled(3, 192, 21)]),
+    0x1C: Code(1, "v"),
+    0x1D: Code(3, "p0,", params=[P(1), Scaled(2, .25)]),
+    0x1E: Code(1, "p"),
+    0x1F: Code(1, "%n1"),
+    0x20: Code(1, "%n0"),
+    0x21: Code(1, "%p1"),
+    0x22: Code(1, "%p0"),
+    0x23: Code(1, "%e1"),
+    0x24: Code(1, "%e0"),
     0x25: Comment(2, "PortaMode rate={}", params=[P(1)]),
     0x26: Comment(1, "26"),
     0x27: Comment(2, "27 {}", params=[P(1)]),
     0x28: Comment(1, "28"),
     0x29: Code(2, "m", params=[P(1), Signed(2)]),
-    0x2A: Code(2, "[", params=[IncrementElide(1)], collapse_empty=True, count_param=1),
+    0x2A: Code(2, "[", params=[Increment(1)], collapse_empty=True, count_param=1),
     0x2B: Comment(3, "2B {} {}", params=[P(1), P(2)]),
     0x2C: Comment(3, "2C {} {} {}", params=[P(1), P(2), P(3)]),
     0x2D: Comment(3, "2D {} {}", params=[P(1), P(2)]),
@@ -666,21 +717,54 @@ formats["rnh"].conditional_jump = []
 formats["rnh"].program_base = 0x20
 formats["rnh"].max_loop_stack = 4
 
+formats["ff6"] = Format("07", "ff6", "AKAO4 / Final Fantasy VI")
+formats["ff6"].duration_table = ["1", "2", "3", "4.", "4", "6", "8.", "8", "12", "16", "24", "32", "48", "64"]
+
+####################
 #### procedures ####
-    
+####################
+
 def shift(loc):
     loc -= shift_amount
     while loc < 0:
         loc += 0x10000
     return loc
+
+def specify_note_duration(note, dur):
+    target_note_table = [0xC0, 0x60, 0x40, 0x48, 0x30, 0x20, 0x24, 0x18, 0x10, 0x0C, 0x08, 0x06, 0x04, 0x03]
+    key = {target_note_table[i]: formats["ff6"].duration_table[i] for i in range(len(target_note_table))}
     
+    solution = []
+    if dur in target_note_table:
+        solution = [dur]
+    target_note_table = [t for t in target_note_table if t <= dur]
+    if not solution:
+        for c in itertools.combinations(target_note_table, 2):
+            if sum(c) == dur:
+                solution = c
+                break
+    if CONFIG_EXPAND_NOTES_TO_THREE and not solution:
+        for c in itertools.combinations(target_note_table, 3):
+            if sum(c) == dur:
+                solution = c
+                break
+    if solution:
+        text = ""
+        for i, s in enumerate(solution):
+            text += "^" if i else f"{note}"
+            text += f"{key[s]}"
+    else:
+        text = f"&{dur}{note}"
+    
+    return text
+        
 def register_notes():
     if format.note_sort_by_duration == True: #suzuki
         multiplier = len(format.note_table)
         for i, dur in enumerate(format.duration_table):
             for j, note in enumerate(format.note_table):
                 if dur:
-                    format.bytecode[i * multiplier + j] = Note(note, dur)
+                    format.bytecode[i * multiplier + j + format.first_note_id] = Note(note, dur)
                 else:
                     pass #TODO implement custom duration notes for suzuki
     else:
@@ -688,9 +772,9 @@ def register_notes():
         for i, note in enumerate(format.note_table):
             for j, dur in enumerate(format.duration_table):
                 if format.dynamic_note_duration == True: #kawakami
-                    format.bytecode[i * multiplier + j] = KawakamiNote(note, dur)
+                    format.bytecode[i * multiplier + j + format.first_note_id] = KawakamiNote(note, j)
                 else: #akao
-                    format.bytecode[i * multiplier + j] = Note(note, dur)
+                    format.bytecode[i * multiplier + j + format.first_note_id] = Note(note, dur)
                 
 def parse_header(data, loc=0):
     tracks = []
@@ -736,6 +820,7 @@ def parse_header(data, loc=0):
                         print(f"found kawakami sequence starting at {i:04X}")
                         header_start = i-0x12
                         header = data[header_start:header_start+header_length]
+                        found = True
                         break
             if not found:
                 print(f"couldn't find kawakami sequence. try extracting it first")
@@ -747,7 +832,7 @@ def parse_header(data, loc=0):
         edl = header[0]
         echo_buffer_size = edl * 0x800
         end = 0xED00 - echo_buffer_size
-        first_track = 0xFF
+        first_track = 0xFFFF
         for i in range(1,9):
             ii = i*2
             track_start = int.from_bytes(header[ii:ii+2], "little")
@@ -786,6 +871,31 @@ def trace_segments(data, segs):
         except TypeError:
             return None
             
+    def rel_octave_set(targ):
+        nonlocal octave_rel, rel_octave_delta
+        if format.low_octave_notes:
+            while octave_rel > targ:
+                octave_rel -= 1
+                rel_octave_delta -= 1
+            while octave_rel < targ:
+                octave_rel += 1
+                rel_octave_delta += 1
+                
+    def rel_octave_set_and_append(targ):
+        rel_octave_set(targ)
+        if rel_octave_delta > 0:
+            append_before += "<" * abs(rel_octave_delta)
+        elif rel_octave_delta < 0:
+            append_before += ">" * abs(rel_octave_delta)
+        
+    def handle_append_before(a=None):
+        if a is None:
+            a = append_before
+        if loc in append_before_items:
+            if append_before_items[loc] != a:
+                print(f"{loc:04X}: warning: ambiguous prepend ({append_before_items[loc]}) ({a})")
+        append_before_items[loc] = a
+                
     # traverse data starting from header pointers
     # goals:
     # - establish end of file when not specified
@@ -800,27 +910,37 @@ def trace_segments(data, segs):
         seg_counter += 1
         #reset state variables
         loop_stack = []
-        octave = None
+        octave = 5 if format.low_octave_notes else None
+        octave_rel = 0
         volume = None
         expression = None if format.use_expression else 0xFF
         program = None
         jump_counter = 1
+        dur_table = []
+        if format.dynamic_note_duration:
+            dur_table = [d for d in format.duration_table if isinstance(d, int)]
         
         this_trace_segs = [seg]
         loc = seg
         print(f"tracing segment {loc:04X}...")
         while True:
+            append_before = ""
+            
             #read control byte
             cmd = data[loc]
             cmdinfo = format.bytecode[cmd]
-            #print(f"read {cmd:02X} at {loc:04X} -- it's {cmdinfo.length} long \"{cmdinfo.symbol}\"", end="")
+            ifprint(f"read {cmd:02X} at {loc:04X} -- it's {cmdinfo.length} long \"{cmdinfo.symbol}\"", DEBUG_STEP_BY_STEP, end="")
             cmd = data[loc:loc+cmdinfo.length]
-            #print(" -- " + " ".join([f"{b:02X}" for b in cmd]))
+            ifprint(" -- " + " ".join([f"{b:02X}" for b in cmd]), DEBUG_STEP_BY_STEP)
 
             if loc + len(cmd) > eof:
                 eof = loc + len(cmd)
-
+            
+            next_loc = loc + cmdinfo.length
+            
             #track states
+            rel_octave_delta = 0
+            
             if cmdinfo.type == "program":
                 program = cmdinfo.get(cmd)
                 #print(f"{loc:04X}: set program to {program:02X}")
@@ -855,32 +975,54 @@ def trace_segments(data, segs):
             elif cmd[0] in format.octave_down and octave:
                 octave -= 1
                 #print(f"{loc:04X}: lower octave to {octave}")
+
+            #handle weird kawakami duration stuff
+            if format.dynamic_note_duration:
+                if "dur_table" in cmdinfo.type:
+                    dur_table = cmdinfo.get(cmd, "dur_table")
+                elif "note" in cmdinfo.type:
+                    if loc in dynamic_note_durations and dynamic_note_durations[loc] != dur_table[cmdinfo.idx]:
+                        print(f"{loc:04X}: ambiguous note duration ({dynamic_note_durations[loc]:02X}) ({dur_table[cmdinfo.idx]:02X})")
+                    elif cmdinfo.length == 1:
+                        dynamic_note_durations[loc] = dur_table[cmdinfo.idx]
                 
             #handle loops
             do_jump = False
             if cmd[0] in format.loop_start:
-                startloc, iterations, counter = [loc + cmdinfo.length, max(2, cmdinfo.get(cmd, "count_param")), 1]
+                startloc, iterations, counter = [loc + cmdinfo.length, cmdinfo.get(cmd, "count_param"), 1]
+                rel_octave_set(0)
                 loop_stack.append( [startloc, iterations, counter] )
-                #print(f"{loc:04X}: loop started with {iterations} iterations")
+                ifprint(f"{loc:04X}: loop started with {iterations} iterations", DEBUG_LOOP_VERBOSE)
                 if len(loop_stack) > format.max_loop_stack:
                     print("warning: loop stack above {format.max_loop_stack}, behavior may become inaccurate")
                     loop_stack.pop(0)
+                if iterations == 0 and format.zero_loops_infinite:
+                    replace_items[loc] = "$"
             elif cmd[0] in format.loop_end:
                 if not loop_stack:
                     print("warning: segment terminated by loop end")
+                    handle_append_before()
                     break
                 else:
                     startloc, iterations, counter = loop_stack[-1]
+                    rel_octave_set(0)
+                    if iterations == 0 and format.zero_loops_infinite:
+                        print("ending segment via infinite loop")
+                        replace_items[loc] = ";"
+                        handle_append_before()
+                        break
                     if counter >= iterations:
-                        #print(f"{loc:04X}: loop ended at {iterations} iterations")
+                        ifprint(f"{loc:04X}: loop ended at {iterations} iterations", DEBUG_LOOP_VERBOSE)
                         loop_stack.pop()
                     else:
                         counter += 1
-                        #print(f"looping back to {startloc:04X} for {counter}rd iteration")
-                        loc = startloc
+                        ifprint(f"looping back to {startloc:04X} for {counter}rd iteration", DEBUG_LOOP_VERBOSE)
+                        next_loc = startloc
                         loop_stack[-1] = [startloc, iterations, counter]
+                        handle_append_before()
                         continue
             elif cmd[0] in format.loop_break or cmd[0] in format.volta_jump:
+                rel_octave_set(0)
                 if loop_stack:
                     startloc, iterations, counter = loop_stack[-1]
                     volta_count = cmdinfo.get(cmd, "volta_param")
@@ -890,25 +1032,37 @@ def trace_segments(data, segs):
                         do_jump = True
                     if cmd[0] in format.loop_break and iterations > 1:
                         loop_stack.pop()
+                        
             #do stuff if it's a jump or end
             if cmd[0] in format.end_track:
+                handle_append_before()
                 break
             if cmd[0] in format.hard_jump or do_jump:
-                loc = shift(cmdinfo.dest(cmd))
-                #print(f"Found hard jump to {loc:04X} ({cmdinfo.dest(cmd):04X})")
-                add_jump(loc, cmd[0] in format.volta_jump)
-                if loc in this_trace_segs:
+                next_loc = shift(cmdinfo.dest(cmd))
+                #print(f"Found hard jump to {next_loc:04X} ({cmdinfo.dest(cmd):04X})")
+                add_jump(next_loc, cmd[0] in format.volta_jump)
+                rel_octave_set(0)
+                if next_loc in this_trace_segs:
                     #print(f"We've been here before. Ending segment")
+                    handle_append_before()
                     break
                 else:
                     this_trace_segs.append(loc)
             elif cmd[0] in format.conditional_jump:
+                rel_octave_set(0)
                 target = shift(cmdinfo.dest(cmd))
                 segs.append(target)
                 add_jump(target)
+                
+            #handle octave-baked-into-note state (kawakami)
+            if cmd[0] in format.low_octave_notes:    
+                rel_octave_set(-1)
+            elif "note" in cmdinfo.type:
+                rel_octave_set(0)
+                                
             #move forward
-            else:
-                loc += cmdinfo.length
+            handle_append_before()
+            loc = next_loc
             if loc >= len(data):
                 print("Segment terminated unexpectedly")
                 break
@@ -946,7 +1100,12 @@ def write_mml(data):
         cmd = data[loc:loc+cmdinfo.length]
         
         #write command to mml
-        line += cmdinfo.write(cmd, loc)
+        if loc in append_before_items:
+            line += append_before_items[loc]
+        if loc in replace_items:
+            line += replace_items[loc]
+        else:
+            line += cmdinfo.write(cmd, loc)
         
         #advance
         loc += cmdinfo.length
@@ -1024,6 +1183,10 @@ if __name__ == "__main__":
     program_locs = {}
     octave_locs = {}
     volume_locs = {}
+    dynamic_note_durations = {}
+    note_tables = {}
+    append_before_items = {}
+    replace_items = {}
     
     bin = bin[origin:]
     tracks, shift_amount, end, header_start, header_length = parse_header(bin)
