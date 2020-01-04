@@ -40,12 +40,12 @@ try:
         f.write(inst)
         f.seek(PTRADDR)
         f.write(BYTEADR)
-        
+    
+    padinfo = ""
+    if len(data) > data_size: padinfo = f" (padded to 0x{len(data):X})"
+    print(f"Wrote 0x{data_size:X} bytes{padinfo}.")
+    input()
+
 except Exception as e:
     print(e)
     input()
-    
-padinfo = ""
-if len(data) > data_size: padinfo = f" (padded to 0x{len(data):X})"
-print(f"Wrote 0x{data_size:X} bytes{padinfo}.")
-input()
