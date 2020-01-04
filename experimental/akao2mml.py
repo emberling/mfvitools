@@ -8,6 +8,7 @@ CONFIG_REMOVE_REDUNDANT_OCTAVES = True
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
+DEBUG_WRITE_VERBOSE = True
 
 import sys, itertools
 
@@ -1079,16 +1080,18 @@ def write_mml(data):
     loc = 0 + header_length
     while loc < len(data):
         #text maintenance
-        if len(line) >= 70:
+        if len(line.rpartition('\n')) >= 70:
             crlf()
+        
+        new_text = ""
         
         #check for targets at this location
         if loc in tracks:
             crlf(2)
-            line += f"{{{tracks[loc]}}}"
+            new_text += f"{{{tracks[loc]}}}"
             crlf()
         if loc in jumps:
-            line += f"${jumps[loc]}"
+            new_text += f"${jumps[loc]}"
             
         #read control byte
         cmd = data[loc]
@@ -1097,13 +1100,16 @@ def write_mml(data):
         
         #write command to mml
         if loc in append_before_items:
-            line += append_before_items[loc]
+            new_text += append_before_items[loc]
         if loc in replace_items:
-            line += replace_items[loc]
+            new_text += replace_items[loc]
         else:
-            line += cmdinfo.write(cmd, loc)
+            new_text += cmdinfo.write(cmd, loc)
         
         #advance
+        ifprint(f"{loc:04X}: writing {' '.join([f'{b:02X}' for b in cmd])} as {new_text}", DEBUG_WRITE_VERBOSE)
+        line += new_text
+        
         loc += cmdinfo.length
     
     crlf()
