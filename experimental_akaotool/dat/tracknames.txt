@@ -1,0 +1,319 @@
+[TrackNames]
+# FINAL FANTASY VI
+3tz5DFRyV+WtmVNpy7I6Iw: (silence, FF6)
+60o49eFPL12kjbemZMTmow: The Prelude (FF6)
+bXkBZviG2N6eIHrWPro0vQ: Omen, part 1
+tSUm8l7FWM/zYkPVEtrPNw: Omen, part 2
+sSFJiQb5cNF6AuQBFg2s1g: Omen, part 3
+KEE9upaqnf6xwkQnU38rvg: Awakening
+fuuw9tcxjLBSvV3ETOG2HQ: Terra's Theme
+2Gg2lTLOJT8xU4Qbt+Evvw: Shadow's Theme
+veuwoKlICPrVG8SXembVPQ: Strago's Theme
+fZKC304ttQBUel6GjjL8Qw: Gau's Theme
+dm9sroOMt5dZa7Im0npKIA: Edgar & Sabin's Theme
+l/lrw1tliqiCQM6BuTcPjA: Coin of Fate
+iIEaRODNv+HV9Sa5/tnpCw: Cyan's Theme
+Ht+zv6FrUIlZ4MndIOaBCQ: Locke's Theme
+/j78x6eO1h49ap1+uygZgQ: Forever Rachel
+wjMqA/z7U4loODkoR8tubg: Relm's Theme
+2rQC/jtRe98PV7gCZaQr/Q: Setzer's Theme
+YuaQvquioOjDCNex6HN65w: Epitaph
+WzosoXsKp6TKvdWTESf9Jw: Celes's Theme
+FuLDZpQmFynK75fAMEJoTw: Techno de Chocobo
+U1k6+6F/CpJeiyL0e7QU/A: The Decisive Battle (FF6)
+pHgF6ay+5vXzUUK+5h6S6w: Johnny C. Bad
+dP32OboTOvegBKoB2ULxIA: Kefka's Theme
+rlA4yk0qidaQZqvGeJWv9g: The Mines of Narshe
+LOIvnSk5VMYDqTdHWhApCw: Phantom Forest
+H40GZ9zfU7mdKafcFx7ORQ: The Veldt
+rnMycY6O535wb0Q74fhTXw: Protect the Espers!
+5ffA0YmtlejygG8QNSuCag: The Gestahl Empire
+vYCjgQgno+pbiWey09eDIg: Troops March On
+AWb8C+EvbFVoJsO+iwhVsQ: Under Martial Law
+oRvbI0Kn8Fr3uWwp82SHJQ: (water flowing, FF6)
+vmIF5wOyNOc/cNwcNZM4sQ: Metamorphosis
+/Gdx2puq+zi+eM+qT0VyBg: Phantom Train
+v2RdEELLpQNxqiH+TwJGvA: Esper World
+3PbovDH/RAGtPfmDT42kSA: Grand Finale
+1j9JM72XkbqtlULeEYCl0g: Mt. Koltz
+EQn3Oy/T+jnoT4N8L6gpNw: Battle (FF6)
+zF4VjxJz+hHegpKt0p34QQ: (slow fanfare, FF6)
+NBxmhOYBbCykVKFC1QnXEw: Wedding Waltz, part 1
+gkYo9YJwxErwJngnWQWL8w: Aria Di Mezzo Carattere
+9XGzLYVq/0lrOiDiSLybGg: The Serpent Trench
+804MCveyGVFuLTf+YW8cIg: Slam Shuffle
+sBWxEH7JRT/VtlcKSrneEA: Kids Run Through the City
+G48PeKjVIbI/H1MlB+uw+A: What? (FF6)
+9Imu0I6JWkDSy7NnjL+KwQ: (crowd noise, FF6)
+NFsRCl9jkoNUlmtbosCJtQ: Gogo's Theme
+ePXU3x6TshctIFyMk50Asw: The Returners
+NAZkvy0Cv1CTHp3ndJUs5g: Victory Fanfare (FF6)
+h3F5AZut4SGKOFea4iMYLg: Umaro's Theme
+IyfDHE08bNPnLVbiYYdD7A: Mog's Theme
+Vww3+5cEBakfIlya4rnyXA: The Unforgiven
+aXA8M9B5uU8vr8vLqjpJxg: Battle to the Death (FF6)
+qNKZ1RF/BfuWzqL14D1kaQ: From That Day On...
+K95US/0J3bLDRZ+ZJRxE8A: The Airship Blackjack
+buXY8LVMZb2U93JunYTfwA: Catastrophe
+WCQYOP05J9+pWVLwWXGDxw: The Magic House
+C5NtO+7rRoGCSzjMW36ghg: (good night, FF6)
+YbrzYMDngV2iASn9EmlSwA: (wind, FF6)
+vVDro2IA8eLj6mSyBb7CFg: (waves, FF6)
+/dnC6sM8O12pZxZ+WrCRkg: Dancing Mad, parts 1-3
+KKmuJvlM0I8VKA1ReYcT3A: (train stopping, FF6)
+JvMFwfTtmyvTsFC/U/OWlg: Spinach Rag
+4Oc+BIt7OwV9J0MVbIz9yQ: Rest in Peace (FF6)
+RuLpzxAbrykx40vCVLgnEw: (chocobos running, FF6)
+F14eSw14n7nzdoJdmyv3UQ: (walking out of zozo)
+E9HeBx0QmigCr8gu5c3b4g: Overture, part 1
+8dWfOgPU+PfYoakT18hH8w: Overture, part 2
+/ai0Ocg3i4fsx4rqyVb5VQ: Overture, part 3
+yrKOuDJ1XVabztbbbI8mXQ: Wedding Waltz, part 2
+BTOKSadH7/h7NS1W1TTP1Q: Wedding Waltz, part 3
+n/TKUDU+FY9/ccS9fUXX+A: Wedding Waltz, part 4
+bM4yxC8FKLBzd3BDVzW6hQ: Devil's Lab
+4MP6NZSrmx1iok2RnbF+uw: (esper attack)
+maasjL901pMG/4OOS6yIVQ: (cranes, FF6)
+uxaPh5xE9ASUDEf1RKOeNg: (burning house, FF6)
+mB4jrnTs3VhVzlNbjEghLA: Floating Continent
+AmKaWAM9s/uzLpzjUvcAwA: Searching for Friends
+Aw0EUCmpW+ENVK/rySKqJQ: The Fanatics
+5sirzqk1YfmkqH/MGXquWQ: Kefka's Tower
+dWHck3wbPhNHN9e0pBNpYw: Dark World
+V1EJAstNtEPLU+fZS+YaYA: Dancing Mad, part 5
+uLE5OQsQqANkJSMTDX8isQ: Dancing Mad, part 4
+L00uJwVwtEJCgw1fxm4ulw: Balance is Restored, part 1
+bd9r24yt/uA/UFXiBhmifg: Balance is Restored, part 2
+# FINAL FANTASY V
+IU8G9HniouSXyWp+r3Ge/g: Main Theme of FINAL FANTASY V
+NeaTyBpBYXx+FOif36wIuQ: Battle 2 (FF5)
+hDCRhiAKkxcDp0VAasztWA: Opening Theme (FF5)
+9FUDIb/yY1dnvTUxR6BQrw: Boco's Theme
+NcQfki1AcolTVVYI6XUx/g: Pirates Ahoy!
+0HyD5m0/AvvUxnL8nYfXQw: Tenderness in the Air
+9lVhnKHFMUnWcctgxSG6Ww: Fate in Haze
+PX5G/z2jBKi37BGqppi2IQ: Critter Tripper Fritter!
+LumcLOiH5AL9HStqtPk0wA: The Prelude (FF5)
+lmP5FfjvL60T7eTSxYkHJw: The Final Battle (FF5)
+rr+zY9bRXx4f5ZTjLwFPXg: Requiem (FF5)
+Kme9DHhLQUqBULUhjpiqcQ: Reminiscence
+Iq1DKWWVlf5cPm1GXxI+2Q: Cursed Lands
+hJlZjSkdMCmKY3Khxdg3jg: Lenna's Theme
+jz3nWQohADi/PvbK5g9HqQ: Victory Fanfare (FF5)
+4N1MG6f/5KPbMY7Epw/26A: Deception
+wQIOciDErApJlefssmfy9Q: Sorrows of Parting
+QIhFi8VMqq1no7mWz3Bc/w: (silence, FF5)
+Nvt2FLpjm3r8OmmndmhP0g: Exdeath's Castle
+EUvXbfDz6iXDKZCsfv2zdQ: Home, Sweet Home
+ttDiN1Ns5Ki+YYImX5voKA: Tycoon Waltz (in F Major)
+vDTfL4TZIcJzyca+lwbQHA: Sealed Away
+w9t3QO91YCA2f/Q+5CKU+w: The Dawn Warriors
+TOjRlu2Y1ivzMb7nQ5Z9mQ: Close Call
+6tNtMfYVIXAoLdkTWYceog: The Fire-Powered Ship
+oz4nwTL1ZU4m2blxj7ifTA: Legend of the Deep Forest
+mgx4JTFnoS5wz0g5mVGCEg: Mambo de Chocobo
+1MKcSWvESCBSiq5n0trnng: Music Box (FF5)
+NGv6WbytRSWgaoKfiDOZlg: Slumber of Ancient Earth
+cn28mmAcgBbU+z1sw5P7ng: Spreading Grand Wings
+9XANuhUUTJA1CVNLspewNA: Beyond the Deep Blue Sea
+mLrZYVTcJz/XSkceokTUCA: Prelude to the Void
+UW3nviTXQempTrAUqVIQHQ: In Search of Light
+WE0gGAvSDVXCYKKelJ5iVA: Harvest
+2kLeMdDA4r1Jns+xSvY/lQ: Clash on the Big Bridge
+BNxTxPSCZHC30JxkPeO2Wg: Four Hearts
+s1r91cXXb6NvQAF3prn03A: Sealed Book
+mkM6i7bvlKfjGdWGQgzamA: What? (FF5)
+2acslA1RDic8RYE20GTncA: Hurry! Hurry!! (FF5)
+TtT8z0k0ZqoMkvgMlcpJWQ: Unknown Lands
+7x4Xl5bIJUjGdn/pzJG8Fw: The Airship (FF5)
+cEJHn1g+jbcFieRB/yImYA: Fanfare 1 (FF5)
+Vp/44KS/LpNnwZXhJMkMDw: Fanfare 2 (FF5)
+wRLVkUGggc5lXlW5UPReng: Battle 1 (FF5)
+KNc75SKpspm2nU5wS+xC9g: To the North Mountain
+QE/fHJgYtk2rEJQaxsmgow: The Evil Lord Exdeath
+LLOBMeOKcBcNtzj5855j2Q: The Castle of Dawn
+RM3tVtuMwAlSei4TsxJbsA: I'm a Dancer! (FF5)
+LI/hDZG7KY6OMBiXHP5wVw: The Day Will Come
+mqmLxDCO8XeozbIOku6isQ: Run! (FF5)
+TT1OF3qSj/zLIiwpcAlVig: Library of Ancients
+wBBLyOkwk+qhq5RLSL+o6A: Royal Palace (FF5)
+CdIsvgdPUmzopDGRGpOdig: Good Night! (FF5)
+Xrs+iQY7zeImrlE5KJPF3Q: Piano Lesson 1 (FF5)
+c0gqImshIA9N7KtnY8O+kA: Piano Lesson 2 (FF5)
+JdpZNfC2KioBv/Lrg1W58g: Piano Lesson 3 (FF5)
+o7/Ypm91/P0qgMRC72wvYA: Piano Lesson 4 (FF5)
+56WDnxSXyc/Wyyo6mRG3+Q: Piano Lesson 5 (FF5)
+AirI89yeZHQJGcpu4nCf8A: Piano Lesson 6 (FF5)
+PTcsg2dOdkwwwXCdwqh+8A: Piano Lesson 7 (FF5)
+pwxdfMa/NHMEp3t8y7rn5g: Piano Lesson 8 (FF5)
+HT1/IafcrUH38ttUt6yUtg: Musica Machina
+zm95/9nOTbzj2eRh2S+SPg: (meteor falling, FF5)
+EC2rv6fY+ofg0hszm8XC2g: A New World (FF5)
+JPc3bOJN8Q0t3zvoREQb2Q: Battle 3 (FF5)
+nZmlSFn7HIHFrR2hz7/Klw: The Silent Beyond
+lJDm7GyFn0RrkohQUHXfkw: Dear Friends
+BnTovOodAmmlI33lR4gvhA: FINAL FANTASY (FF5)
+Vq6twFbgESbKp5DO+NSLxg: Ending Theme (FF5)
+cvGw/Kc1M/uryr6UIUpnyA: (crickets, FF5)
+B0eeAZkg1FaM2xO51A+A3g: (shore, FF5)
+0vG+y066Aq2a2+Ca5K4SEQ: (tide rolls in, ff5)
+
+[IDNamesFF6]
+00: (silence, FF6)
+01: The Prelude (FF6)
+02: Omen, part 1
+03: Omen, part 2
+04: Omen, part 3
+05: Awakening
+06: Terra's Theme
+07: Shadow's Theme
+08: Strago's Theme
+09: Gau's Theme
+0A: Edgar & Sabin's Theme
+0B: Coin of Fate
+0C: Cyan's Theme
+0D: Locke's Theme
+0E: Forever Rachel
+0F: Relm's Theme
+10: Setzer's Theme
+11: Epitaph
+12: Celes's Theme
+13: Techno de Chocobo
+14: The Decisive Battle (FF6)
+15: Johnny C. Bad
+16: Kefka's Theme
+17: The Mines of Narshe
+18: Phantom Forest
+19: The Veldt
+1A: Protect the Espers!
+1B: The Gestahl Empire
+1C: Troops March On
+1D: Under Martial Law
+1E: (water flowing, FF6)
+1F: Metamorphosis
+20: Phantom Train
+21: Esper World
+22: Grand Finale
+23: Mt. Koltz
+24: Battle (FF6)
+25: (slow fanfare, FF6)
+26: Wedding Waltz, part 1
+27: Aria Di Mezzo Carattere
+28: The Serpent Trench
+29: Slam Shuffle
+2A: Kids Run Through the City
+2B: What? (FF6)
+2C: (crowd noise, FF6)
+2D: Gogo's Theme
+2E: The Returners
+2F: Victory Fanfare (FF6)
+30: Umaro's Theme
+31: Mog's Theme
+32: The Unforgiven
+33: Battle to the Death (FF6)
+34: From That Day On...
+35: The Airship Blackjack
+36: Catastrophe
+37: The Magic House
+38: (good night, FF6)
+39: (wind, FF6)
+3A: (waves, FF6)
+3B: Dancing Mad, parts 1-3
+3C: (train stopping, FF6)
+3D: Spinach Rag
+3E: Rest in Peace (FF6)
+3F: (chocobos running, FF6)
+40: (walking out of zozo)
+41: Overture, part 1
+42: Overture, part 2
+43: Overture, part 3
+44: Wedding Waltz, part 2
+45: Wedding Waltz, part 3
+46: Wedding Waltz, part 4
+47: Devil's Lab
+48: (esper attack)
+49: (cranes, FF6)
+4A: (burning house, FF6)
+4B: Floating Continent
+4C: Searching for Friends
+4D: The Fanatics
+4E: Kefka's Tower
+4F: Dark World
+50: Dancing Mad, part 5
+52: Dancing Mad, part 4
+53: Balance is Restored, part 1
+54: Balance is Restored, part 2
+
+[IDNamesFF5]
+00: Main Theme of FINAL FANTASY V
+01: Battle 2 (FF5)
+02: Opening Theme (FF5)
+03: Boco's Theme
+04: Pirates Ahoy!
+05: Tenderness in the Air
+06: Fate in Haze
+07: Critter Tripper Fritter!
+08: The Prelude (FF5)
+09: The Final Battle (FF5)
+0A: Requiem (FF5)
+0B: Reminiscence
+0C: Cursed Lands
+0D: Lenna's Theme
+0E: Victory Fanfare (FF5)
+0F: Deception
+10: Sorrows of Parting
+11: (silence, FF5)
+12: Exdeath's Castle
+13: Home, Sweet Home
+14: Tycoon Waltz (in F Major)
+15: Sealed Away
+16: The Dawn Warriors
+17: Close Call
+18: The Fire-Powered Ship
+19: Legend of the Deep Forest
+1A: Mambo de Chocobo
+1B: Music Box (FF5)
+1C: Slumber of Ancient Earth
+1D: Spreading Grand Wings
+1E: Beyond the Deep Blue Sea
+1F: Prelude to the Void
+20: In Search of Light
+21: Harvest
+22: Clash on the Big Bridge
+23: Four Hearts
+24: Sealed Book
+25: What? (FF5)
+26: Hurry! Hurry!! (FF5)
+27: Unknown Lands
+28: The Airship (FF5)
+29: Fanfare 1 (FF5)
+2A: Fanfare 2 (FF5)
+2B: Battle 1 (FF5)
+2C: To the North Mountain
+2D: The Evil Lord Exdeath
+2E: The Castle of Dawn
+2F: I'm a Dancer! (FF5)
+30: The Day Will Come
+31: Run! (FF5)
+32: Library of Ancients
+33: Royal Palace (FF5)
+34: Good Night! (FF5)
+35: Piano Lesson 1 (FF5)
+36: Piano Lesson 2 (FF5)
+37: Piano Lesson 3 (FF5)
+38: Piano Lesson 4 (FF5)
+39: Piano Lesson 5 (FF5)
+3A: Piano Lesson 6 (FF5)
+3B: Piano Lesson 7 (FF5)
+3C: Piano Lesson 8 (FF5)
+3D: Musica Machina
+3E: (meteor falling, FF5)
+3F: A New World (FF5)
+40: Battle 3 (FF5)
+41: The Silent Beyond
+42: Dear Friends
+43: FINAL FANTASY (FF5)
+44: Ending Theme (FF5)
+45: (crickets, FF5)
+46: (shore, FF5)
+47: (tide rolls in, ff5)

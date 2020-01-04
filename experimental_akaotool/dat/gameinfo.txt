@@ -1,0 +1,114 @@
+[SNESHeader]
+FINAL FANTASY 3: FF6
+FF6: FF6
+FINAL FANTASY 6: FF6
+FINAL FANTASY 5: FF5
+Secret of MANA: SD2
+SEIKEN DENSETSU 2: SD2
+CHRONO TRIGGER: CT
+ROMANCING SAGA3: RS3
+RADICAL DREAMERS: RD
+BS D7 BC DE B6 D9 A5 C4 DE: RD
+
+[ModeFF6]
+bgmcount: 53C5E
+bgmptrs: 50539
+brrptrs: 50222
+instptr: 501E3
+loopptr: 5041C
+pitchptr: 5049C
+adsrptr: 504DE
+dialect: AKAO4_FF6
+volume_bits: 7
+pan_bits: 7
+percussion: False
+core_programs: 8
+max_blocks: 3746
+
+[ModeFF5]
+bgmcount: False
+bgmptrs: 40223
+brrptrs: 402EE
+instptr: 402A0
+loopptr: 404F5
+pitchptr: 404E1
+adsrptr: 404FF
+dialect: AKAO3_FF5
+volume_bits: 8
+pan_bits: 8
+percussion: False
+core_programs: 8
+max_blocks: 3895
+
+[ModeSD2]
+#bgmtable 33D39, inst 33F22, ADSR 33EE0, pitch 33E9E, loop 33E5C, brrtable 33DF9
+bgmcount: False
+bgmptrs: 30231
+brrptrs: 30305
+instptr: 302B7
+loopptr: 3050B
+pitchptr: 304F7
+adsrptr: 30515
+dialect: AKAO3_SD2
+volume_bits: 8
+pan_bits: 8
+percussion: False
+dynamic_edl: True
+core_programs: 8
+max_blocks: False
+
+[ModeCT]
+bgmcount: 70AE9
+bgmptrs: 70510
+brrptrs: 70667
+instptr: 701EB
+loopptr: 703AD
+pitchptr: 7043D
+adsrptr: 7048B
+dialect: AKAO4_CT
+volume_bits: 7
+pan_bits: 7
+percussion: True
+core_programs: 8
+dyn_programs: 1
+max_blocks: False
+#bgmtable 70D18, brrtable 70AEA, ADSR 70C9C, pitch 70C20, loop 70BA4, inst 70e11
+
+[ModeRS3]
+bgmcount: 60CE3
+bgmptrs: 60516
+brrptrs: 6066B
+instptr: 601FC
+loopptr: 603BE
+pitchptr: 6044E
+adsrptr: 6049C
+dialect: AKAO4_RS3
+max_blocks: False
+#bgmtable 60FC6, brrtable 60CE4, ADSR 60F22, pitch 60E7E, loop 60DDA, inst 610DA
+
+[ModeRD]
+bgmcount: D408D
+bgmptrs: D04EE
+brrptrs: D067E
+instptr: D01D4
+loopptr: D0397
+pitchptr: D0427
+adsrptr: D0475
+dialect: AKAO4_BS
+percussion: True
+max_blocks: False
+#bgmtable D4208, brrtable D408E, ADSR D41B4, pitch D4160, loop D410C, inst D4250
+
+[CoreOffsets]
+#     #.BGM  BGMAdr Inst   BRRAdr Loop   Pitch  ADSR
+FF6:  53C5E  50539  501E3  50222  5041C  5049C  504DE
+FF5:  43540  40223  402A0  402EE  404F5  404E0  404FF
+
+## FF5:
+## BGM C5E5E8 to C6FE75
+## Pointers C43B97 to C43C6E - x72 ($48)
+## 35 samples, C446AA to C5E5E7
+## Sample pointers C43C6F to C43CD8
+## ADSR C43D64, pitch C43D1E, loop C43CD8
+## Can't find a # of songs byte - temporarily pointing to some random $48
+## Inst data C43DAA
