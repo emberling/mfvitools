@@ -1,4 +1,4 @@
-VERSION = "alpha 0.05.02"
+VERSION = "alpha 0.05.03"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -868,12 +868,23 @@ def parse_header(data, loc=0):
             for i in range(sequence_pos-2, 0xA000, -1):
                 if data[i] in [0x09, 0x0A]:
                     #17 and 18 bytes before the 09/OA should be <= 8
-                    if data[i-0x11] <= 8 and data[i-0x12] <= 8:
+                    if data[i-0x11] <= 8 and data[i-0x12] <= 8 and data[i-0x11] > 0 and data[i-0x12] > 0:
                         print(f"found kawakami sequence starting at {i:04X}")
                         header_start = i-0x12
                         header = data[header_start:header_start+header_length]
                         found = True
                         break
+            if not found:
+                print("sequence scanner method 1 failed, trying another (may false positive")
+                for i in range(sequence_pos-2, 0xA000, -1):
+                    if data[i] == 0x0B:
+                        #17 and 18 bytes before the 0B should be <= 8
+                        if data[i-0x11] <= 8 and data[i-0x12] <= 8 and data[i-0x11] > 0 and data[i-0x12] > 0:
+                            print(f"found kawakami sequence starting at {i:04X}")
+                            header_start = i-0x12
+                            header = data[header_start:header_start+header_length]
+                            found = True
+                            break                
             if not found:
                 print(f"couldn't find kawakami sequence. try extracting it first")
                 clean_end()
