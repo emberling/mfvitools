@@ -1,4 +1,4 @@
-VERSION = "alpha 0.04.03"
+VERSION = "alpha 0.04.04"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -676,9 +676,9 @@ formats["rnh"].zero_loops_infinite = True
 formats["rnh"].bytecode = {
     0x00: Code(1, ";"),
     0x01: Code(2, "%x", params=[P(1)]),
-    0x02: Comment(2, "02 {}", params=[P(1)]),
+    0x02: Code(2, "%v", params=[Scaled(1, 2)]),
     0x03: ExpressionCode(2, "{e}", params=[Scaled(1, .5)], expression_param=1),
-    0x04: Comment(3, "04 {} {}", params=[P(1), P(2)]),
+    0x04: DoubleCode(3, "%b0,", "%f0,", first_params=[P(1)], second_params=[P(2)]),
     0x05: Comment(1, "05"),
     0x06: Code(2, "t", params=[TempoScale(1)]),
     0x07: Code(3, "t", params=[P(1), TempoScale(2)], env_param=1),
@@ -697,7 +697,7 @@ formats["rnh"].bytecode = {
     0x14: Code(2, "%s", params=[P(1)]),
     0x15: Code(2, "%r", params=[P(1)]),
     0x16: Comment(1, "%y"),
-    0x17: Comment(2, "17 {}", params=[P(1)]),
+    0x17: Comment(2, "AltTuning {}", params=[P(1)]),
     0x18: Comment(2, "18 {}", params=[P(1)]),
     0x19: Code(4, "m", params=[P(1), Scaled(2, 4), SixBitFloorScaled(3, 192, 21)]),
     0x1A: Code(1, "m"),
@@ -712,7 +712,7 @@ formats["rnh"].bytecode = {
     0x23: Code(1, "%e1"),
     0x24: Code(1, "%e0"),
     0x25: Comment(2, "PortaMode rate={}", params=[P(1)]),
-    0x26: Comment(1, "26"),
+    0x26: Comment(1, "PortaOff"),
     0x27: Comment(2, "27 {}", params=[P(1)]),
     0x28: Comment(1, "28"),
     0x29: Code(3, "m", params=[P(1), ScaledSigned(2, .5)]),
