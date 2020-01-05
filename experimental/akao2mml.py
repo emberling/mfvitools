@@ -1,4 +1,4 @@
-VERSION = "alpha 0.05.03"
+VERSION = "alpha 0.06.01"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -667,7 +667,7 @@ formats["ff5"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
 formats["ff5"].header_type = 3
 
 formats["sd2"] = copy.deepcopy(formats["ff5"])
-formats["sd2"].sort_as = "04"
+formats["sd2"].sort_as = "05"
 formats["sd2"].id = "sd2"
 formats["sd2"].display_name = "AKAO3 / Secret of Mana"
 formats["sd2"].scanner_loc = 0x300
@@ -677,6 +677,99 @@ formats["sd2"].sequence_loc = 0x1B00
 formats["sd2"].bytecode[0xFC] = Comment(1, "LoopRestart")
 formats["sd2"].bytecode[0xFD] = Comment(2, "IgnoreMVol prg={}", params=[P(1)])
 formats["sd2"].end_track = [0xF2, 0xFE, 0xFF]
+
+formats["rs2"] = Format("06", "rs2", "AKAO4 / Romancing SaGa 2")
+formats["rs2"].scanner_loc = 0x310
+formats["rs2"].scanner_data = b"\x00\x8D\x0C\x3F\x5C\x06\x8D\x1C" + \
+                              b"\x3F\x5C\x06\x8D\x2C\x3F\x5C\x06"
+formats["rs2"].sequence_loc = 0x1D00
+formats["rs2"].sequence_relative = True
+formats["rs2"].header_type = 4
+formats["rs2"].use_expression = False
+formats["rs2"].tempo_scale = (60000 / 216) / 256
+formats["rs2"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "^", "r"]
+formats["rs2"].duration_table = ["1", "2", "3", "4.", "4", "6", "8.", "8", "12", "16", "24", "32", "48", "64"]
+formats["rs2"].low_octave_notes = []
+formats["rs2"].note_sort_by_duration = False
+formats["rs2"].dynamic_note_duration = False
+formats["rs2"].first_note_id = 0
+formats["rs2"].zero_loops_infinite = False
+formats["rs2"].bytecode = {
+    0xC4: VolumeCode(2, "v", params=[Scaled(1, .5)], volume_param=1),
+    0xC5: VolumeCode(3, "v", params=[P(1), Scaled(2, .5)], env_param=1, volume_param=2),
+    0xC6: Code(2, "p", params=[Scaled(1, .5)]),
+    0xC7: Code(3, "p", params=[P(1), Scaled(2, .5)], env_param=1),
+    0xC8: Code(3, "m", params=[P(1), Signed(2)]),
+    0xC9: Code(4, "m", params=[P(1), P(2), P(3)]),
+    0xCA: Code(1, "m"),
+    0xCB: Code(4, "v", params=[P(1), P(2), P(3)]),
+    0xCC: Code(1, "v"),
+    0xCD: Code(3, "p0,", params=[P(1), P(2)]),
+    0xCE: Code(1, "p"),
+    0xCF: Code(2, "%c", params=[P(1)]),
+    0xD0: Code(1, "%n1"),
+    0xD1: Code(1, "%n0"),
+    0xD2: Code(1, "%p1"),
+    0xD3: Code(1, "%p0"),
+    0xD4: Code(1, "%e1"),
+    0xD5: Code(1, "%e0"),
+    0xD6: OctaveCode(2, "o", params=[P(1)], octave_param=1),
+    0xD7: Code(1, "<"),
+    0xD8: Code(1, ">"),
+    0xD9: Code(2, "%k", params=[Signed(1)]),
+    0xDA: Code(2, "m", params=[Signed(1)]),
+    0xDB: Code(3, "k", params=[Signed(1)]),
+    0xDC: ProgramCode(2, params=[P(1)]),
+    0xDD: Code(2, "%a", params=[P(1)]),
+    0xDE: Code(2, "%y", params=[P(1)]),
+    0xDF: Code(2, "%s", params=[P(1)]),
+    0xE0: Code(2, "%r", params=[P(1)]),
+    0xE1: Code(1, "%y"),
+    0xE2: Code(2, "[", params=[Increment(1)], collapse_empty=True, count_param=1),
+    0xE3: Code(1, "]"),
+    0xE4: Code(1, "%l1"),
+    0xE5: Code(1, "%l0"),
+    0xE6: Code(1, "%g1"),
+    0xE7: Code(1, "%g0"),
+    0xE8: Code(2, "&", params=[P(1)]),
+    0xE9: Code(2, "%s0,", params=[P(1)]),
+    0xEA: Code(2, "%s1,", params=[P(1)]),
+    0xEB: Code(1, ";"),
+    0xEC: Code(1, ";"),
+    0xED: Code(1, ";"),
+    0xEE: Code(1, ";"),
+    0xEF: Code(1, ";"),
+    0xF0: Code(2, "t", params=[TempoScale(1)]),
+    0xF1: Code(3, "t", params=[P(1), TempoScale(2)], env_param=1),
+    0xF2: Code(2, "%v", params=[P(1)]),
+    0xF3: Code(3, "%v", params=[P(1), P(2)], env_param=1),
+    0xF4: DoubleCode(3, "%b0,", "%f0,", first_params=[P(1)], second_params=[P(2)]),
+    0xF5: Code(2, "%x", params=[P(1)]),
+    0xF6: Jump(4, "j", params=[P(1)], dest=Multi(2,2), volta_param=1),
+    0xF7: Jump(3, ";", dest=Multi(1,2)),
+    0xF8: Code(1, "u1"),
+    0xF9: Code(1, "u0"),
+    0xFA: Code(1, "%i"),
+    0xFB: Jump(3, ":", dest=Multi(1,2)),
+    0xFC: Code(1, ";"),
+    0xFD: Code(1, ";"),
+    0xFE: Code(1, ";"),
+    0xFF: Code(1, ";")
+    }
+formats["rs2"].loop_start = [0xE2]
+formats["rs2"].loop_end = [0xE3]
+formats["rs2"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFC, 0xFD, 0xFE, 0xFF]
+formats["rs2"].octave_up = [0xD7]
+formats["rs2"].octave_down = [0xD8]
+formats["rs2"].hard_jump = [0xF7]
+formats["rs2"].volta_jump = []
+formats["rs2"].loop_break = [0xF6]
+formats["rs2"].conditional_jump = [0xFC]
+formats["rs2"].program_base = 0x20
+formats["rs2"].max_loop_stack = 4
+
+formats["ff6"] = Format("07", "ff6", "AKAO4 / Final Fantasy VI")
+formats["ff6"].duration_table = ["1", "2", "3", "4.", "4", "6", "8.", "8", "12", "16", "24", "32", "48", "64"]
 
 formats["rnh"] = Format("16", "rnh", "KAWAKAMI / Rudra no Hihou (TotR)")
 formats["rnh"].scanner_loc = 0x300
@@ -757,9 +850,6 @@ formats["rnh"].conditional_jump = []
 formats["rnh"].program_base = 0x20
 formats["rnh"].max_loop_stack = 4
 
-formats["ff6"] = Format("07", "ff6", "AKAO4 / Final Fantasy VI")
-formats["ff6"].duration_table = ["1", "2", "3", "4.", "4", "6", "8.", "8", "12", "16", "24", "32", "48", "64"]
-
 ####################
 #### procedures ####
 ####################
@@ -819,7 +909,7 @@ def register_notes():
 # # # # # HEADER # # # # #
 
 def parse_header(data, loc=0):
-    tracks = []
+    tracks = {}
     end = None
     header_start = 0
     if format.header_type == 1: ### ff4, rs1 ###
@@ -830,7 +920,7 @@ def parse_header(data, loc=0):
             ii = i*2
             track_start = int.from_bytes(header[ii:ii+2], "little")
             if track_start > 0:
-                tracks.append(track_start)
+                tracks[i] = track_start
     elif format.header_type == 2: ### ffmq ###
         header_length = 0x12
         header = data[loc:loc+header_length]
@@ -840,17 +930,28 @@ def parse_header(data, loc=0):
             ii = i*2
             track_start = int.from_bytes(header[ii:ii+2], "little")
             if track_start != end:
-                tracks.append(track_start)
-    elif format.header_type == 3: ### ff5, sd2 ##
+                tracks[i] = track_start
+    elif format.header_type == 3: ### ff5, sd2 ###
         header_length = 0x14
         header = data[loc:loc+header_length]
         shift_amt = int.from_bytes(header[0:2], "little") - header_length
         end = int.from_bytes(header[0x12:0x14], "little")
-        for i in range(1,9):
-            ii = i*2
+        for i in range(8):
+            ii = (i+1)*2
             track_start = int.from_bytes(header[ii:ii+2], "little")
             if track_start != end:
-                tracks.append(track_start)
+                tracks[i] = track_start
+    elif format.header_type == 4: ### akao4 ###
+        header_length = 0x24
+        header = data[loc:loc+header_length]
+        shift_amt = int.from_bytes(header[0:2], "little") - header_length
+        end = int.from_bytes(header[0x2:0x4], "little")
+        for i in range(16):
+            ii = (i+2)*2
+            track_start = int.from_bytes(header[ii:ii+2], "little")
+            if track_start != end:
+                if i < 8 or ( (i-8) in tracks and track_start != tracks[i-8] ): 
+                    tracks[i] = track_start
     elif format.header_type == 6: ### rnh ###
         header_length = 0x12
         if spc_mode:
@@ -900,21 +1001,21 @@ def parse_header(data, loc=0):
             ii = i*2
             track_start = int.from_bytes(header[ii:ii+2], "little")
             first_track = min(first_track, track_start)
-            tracks.append(track_start)
+            tracks[i] = track_start
         shift_amt = first_track - header_length
 
 
-    tracks_dict = {}
-    for i, t in enumerate(tracks):
-        t -= shift_amt
-        while t < 0:
-            t += 0x10000
-        tracks_dict[t] = i+1
+    tracks_shifted = {}
+    for k, v in tracks.items():
+        v -= shift_amt
+        while v < 0:
+            v += 0x10000
+        tracks_shifted[v] = k+1
         
-    print(f"tracks found: {' '.join([f'{t:04X}' for t in tracks])}")
-    print(f"tracks found: {' '.join([f'{t:04X}' for t in list(tracks_dict)])}")
+    print(f"tracks found: {' '.join([f'{t:04X}' for t in tracks.values()])}")
+    print(f"tracks found: {' '.join([f'{t:04X}' for t in list(tracks_shifted)])}")
     
-    return tracks_dict, shift_amt, end, header_start, header_length
+    return tracks_shifted, shift_amt, end, header_start, header_length
     
 # # # # # TRACE # # # # #
 
