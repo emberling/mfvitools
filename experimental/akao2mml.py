@@ -1,4 +1,4 @@
-VERSION = "alpha 0.05.01"
+VERSION = "alpha 0.05.02"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -9,6 +9,7 @@ CONFIG_REMOVE_REDUNDANT_OCTAVES = True
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
 DEBUG_JUMP_VERBOSE = False
+DEBUG_STATE_VERBOSE = False
 DEBUG_WRITE_VERBOSE = False
 
 import sys, itertools, copy
@@ -675,6 +676,7 @@ formats["sd2"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
 formats["sd2"].sequence_loc = 0x1B00
 formats["sd2"].bytecode[0xFC] = Comment(1, "LoopRestart")
 formats["sd2"].bytecode[0xFD] = Comment(2, "IgnoreMVol prg={}", params=[P(1)])
+formats["sd2"].end_track = [0xF2, 0xFE, 0xFF]
 
 formats["rnh"] = Format("16", "rnh", "KAWAKAMI / Rudra no Hihou (TotR)")
 formats["rnh"].scanner_loc = 0x300
@@ -992,7 +994,7 @@ def trace_segments(data, segs):
             
             if cmdinfo.type == "program":
                 program = cmdinfo.get(cmd)
-                #print(f"{loc:04X}: set program to {program:02X}")
+                ifprint(f"{loc:04X}: set program to {program:02X}", DEBUG_STATE_VERBOSE)
                 if loc in program_locs:
                     if program_locs[loc][1] != octave:
                         if program_locs[loc][1] is None:
@@ -1009,15 +1011,15 @@ def trace_segments(data, segs):
                 octave_rel = 0
             elif cmdinfo.type == "volume":
                 volume = cmdinfo.get(cmd, 'volume_param')
-                #print(f"{loc:04X}: set volume to {volume}")
+                ifprint(f"{loc:04X}: set volume to {volume}", DEBUG_STATE_VERBOSE)
                 volume_locs[loc] = program
             elif cmdinfo.type == "expression":
                 expression = cmdinfo.get(cmd, 'expression_param')
-                #print(f"{loc:04X}: set expression to {expression}")
+                ifprint(f"{loc:04X}: set expression to {expression}", DEBUG_STATE_VERBOSE)
                 volume_locs[loc] = program
             elif cmdinfo.type == "octave":
                 octave = cmdinfo.get(cmd, 'octave_param')
-                #print(f"{loc:04X}: set octave to {octave}")
+                ifprint(f"{loc:04X}: set octave to {octave}", DEBUG_STATE_VERBOSE)
                 octave_locs[loc] = program
             elif cmd[0] in format.octave_up and octave:
                 octave += 1
