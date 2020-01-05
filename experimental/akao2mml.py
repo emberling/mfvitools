@@ -1,4 +1,4 @@
-VERSION = "alpha 0.04.04"
+VERSION = "alpha 0.05.01"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -8,9 +8,10 @@ CONFIG_REMOVE_REDUNDANT_OCTAVES = True
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
+DEBUG_JUMP_VERBOSE = False
 DEBUG_WRITE_VERBOSE = False
 
-import sys, itertools
+import sys, itertools, copy
 
 def ifprint(text, condition, **kwargs):
     if condition:
@@ -580,9 +581,9 @@ formats["rs1"].program_base = 0x20
 formats["rs1"].max_loop_stack = 4
 
 formats["ffmq"] = Format("03", "ffmq", "AKAO3 / Final Fantasy Mystic Quest")
-formats["ffmq"].scanner_loc = 0x2F8
-formats["ffmq"].scanner_data = b"\x27\x09\xBD\x4E\x00\x00\x91\x02" + \
-                              b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D"
+formats["ffmq"].scanner_loc = 0x300
+formats["ffmq"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
+                              b"\xAF\xC8\xF0\xD0\xFB\x1A\x02\x1A"
 formats["ffmq"].sequence_loc = 0x1D00
 formats["ffmq"].sequence_relative = True
 formats["ffmq"].header_type = 2
@@ -655,6 +656,25 @@ formats["ffmq"].conditional_jump = [0xFB]
 formats["ffmq"].program_base = 0x20
 formats["ffmq"].max_loop_stack = 4
 
+formats["ff5"] = copy.deepcopy(formats["ffmq"])
+formats["ff5"].sort_as = "04"
+formats["ff5"].id = "ff5"
+formats["ff5"].display_name = "AKAO3 / Final Fantasy V, Hanjuku Hero"
+formats["ff5"].scanner_loc = 0x300
+formats["ff5"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
+                              b"\xAF\xC8\xF0\xD0\xFB\x1A\xEB\xE8"
+formats["ff5"].header_type = 3
+
+formats["sd2"] = copy.deepcopy(formats["ff5"])
+formats["sd2"].sort_as = "04"
+formats["sd2"].id = "sd2"
+formats["sd2"].display_name = "AKAO3 / Secret of Mana"
+formats["sd2"].scanner_loc = 0x300
+formats["sd2"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
+                              b"\xAF\xC8\xF0\xD0\xFB\xE8\x00\x8D"
+formats["sd2"].sequence_loc = 0x1B00
+formats["sd2"].bytecode[0xFC] = Comment(1, "LoopRestart")
+formats["sd2"].bytecode[0xFD] = Comment(2, "IgnoreMVol prg={}", params=[P(1)])
 
 formats["rnh"] = Format("16", "rnh", "KAWAKAMI / Rudra no Hihou (TotR)")
 formats["rnh"].scanner_loc = 0x300
@@ -794,6 +814,8 @@ def register_notes():
                 else: #akao
                     format.bytecode[i * multiplier + j + format.first_note_id] = Note(note, dur)
                 
+# # # # # HEADER # # # # #
+
 def parse_header(data, loc=0):
     tracks = []
     end = None
@@ -813,6 +835,16 @@ def parse_header(data, loc=0):
         shift_amt = int.from_bytes(header[0:2], "little") - header_length
         end = int.from_bytes(header[0x10:0x12], "little")
         for i in range(8):
+            ii = i*2
+            track_start = int.from_bytes(header[ii:ii+2], "little")
+            if track_start != end:
+                tracks.append(track_start)
+    elif format.header_type == 3: ### ff5, sd2 ##
+        header_length = 0x14
+        header = data[loc:loc+header_length]
+        shift_amt = int.from_bytes(header[0:2], "little") - header_length
+        end = int.from_bytes(header[0x12:0x14], "little")
+        for i in range(1,9):
             ii = i*2
             track_start = int.from_bytes(header[ii:ii+2], "little")
             if track_start != end:
@@ -871,6 +903,8 @@ def parse_header(data, loc=0):
     
     return tracks_dict, shift_amt, end, header_start, header_length
     
+# # # # # TRACE # # # # #
+
 def trace_segments(data, segs):
 
     def add_jump(dest, volta_warn=False):
@@ -1056,19 +1090,20 @@ def trace_segments(data, segs):
                         
             #do stuff if it's a jump or end
             if cmd[0] in format.end_track:
+                ifprint(f"{loc:04X}: hard end", DEBUG_JUMP_VERBOSE)
                 finalize(append_before=append_before)
                 break
             if cmd[0] in format.hard_jump or do_jump:
                 next_loc = shift(cmdinfo.dest(cmd))
-                #print(f"Found hard jump to {next_loc:04X} ({cmdinfo.dest(cmd):04X})")
+                ifprint(f"Found hard jump to {next_loc:04X} ({cmdinfo.dest(cmd):04X})", DEBUG_JUMP_VERBOSE)
                 add_jump(next_loc, cmd[0] in format.volta_jump)
                 rel_octave_set(0)
                 if next_loc in this_trace_segs:
-                    #print(f"We've been here before. Ending segment")
+                    ifprint(f"We've been here before. Ending segment", DEBUG_JUMP_VERBOSE)
                     finalize(append_before=append_before)
                     break
                 else:
-                    this_trace_segs.append(loc)
+                    this_trace_segs.append(next_loc)
             elif cmd[0] in format.conditional_jump:
                 rel_octave_set(0)
                 target = shift(cmdinfo.dest(cmd))
@@ -1089,6 +1124,8 @@ def trace_segments(data, segs):
                 break
     return eof
     
+# # # # # WRITE # # # # #
+
 def write_mml(data):
     
     def crlf(n=1):
