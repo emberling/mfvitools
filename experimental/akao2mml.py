@@ -1,4 +1,4 @@
-VERSION = "alpha 0.06.01"
+VERSION = "alpha 0.06.02"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -151,10 +151,7 @@ class Jump(Code):
         try:
             target = jumps[shift(self.dest(cmd))]
         except KeyError:
-            try:
-                print(f"{loc:02X}: couldn't find jump destination {shift(dest(cmd))} ({dest(cmd):02X})")
-            except NameError:
-                print(f"{loc:02X}: couldn't identify jump destination in {' '.join([f'{b:02X}' for b in cmd])}")
+            print(f"{loc:04X}: couldn't find jump destination {shift(self.dest(cmd)):04X} ({self.dest(cmd):04X})")
             target = 0
         self.params.append(Fixed(target))
         text = Code.write(self, cmd, loc)
@@ -718,7 +715,7 @@ formats["rs2"].bytecode = {
     0xD8: Code(1, ">"),
     0xD9: Code(2, "%k", params=[Signed(1)]),
     0xDA: Code(2, "m", params=[Signed(1)]),
-    0xDB: Code(3, "k", params=[Signed(1)]),
+    0xDB: Code(2, "k", params=[Signed(1)]),
     0xDC: ProgramCode(2, params=[P(1)]),
     0xDD: Code(2, "%a", params=[P(1)]),
     0xDE: Code(2, "%y", params=[P(1)]),
@@ -750,7 +747,7 @@ formats["rs2"].bytecode = {
     0xF8: Code(1, "u1"),
     0xF9: Code(1, "u0"),
     0xFA: Code(1, "%i"),
-    0xFB: Jump(3, ":", dest=Multi(1,2)),
+    0xFB: Code(1, ";"),
     0xFC: Code(1, ";"),
     0xFD: Code(1, ";"),
     0xFE: Code(1, ";"),
@@ -758,20 +755,51 @@ formats["rs2"].bytecode = {
     }
 formats["rs2"].loop_start = [0xE2]
 formats["rs2"].loop_end = [0xE3]
-formats["rs2"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFC, 0xFD, 0xFE, 0xFF]
+formats["rs2"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF]
 formats["rs2"].octave_up = [0xD7]
 formats["rs2"].octave_down = [0xD8]
 formats["rs2"].hard_jump = [0xF7]
 formats["rs2"].volta_jump = []
 formats["rs2"].loop_break = [0xF6]
-formats["rs2"].conditional_jump = [0xFC]
+formats["rs2"].conditional_jump = []
 formats["rs2"].program_base = 0x20
 formats["rs2"].max_loop_stack = 4
 
-formats["ff6"] = Format("07", "ff6", "AKAO4 / Final Fantasy VI")
-formats["ff6"].duration_table = ["1", "2", "3", "4.", "4", "6", "8.", "8", "12", "16", "24", "32", "48", "64"]
+formats["lal"] = copy.deepcopy(formats["rs2"])
+formats["lal"].sort_as = "07"
+formats["lal"].id = "lal"
+formats["lal"].display_name = "AKAO4 / Live A Live"
+formats["lal"].scanner_data = b"\x00\x8D\x2C\x3F\x14\x06\x8D\x3C" + \
+                              b"\x3F\x14\x06\x8D\x5D\xE8\x1B\x3F"
+formats["lal"].bytecode[0xFB] = Jump(3, ":", dest=Multi(1,2))
+formats["lal"].conditional_jump = [0xFB]
+formats["lal"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFC, 0xFD, 0xFE, 0xFF]
+                              
+formats["ff6"] = copy.deepcopy(formats["lal"])
+formats["ff6"].sort_as = "08"
+formats["ff6"].id = "ff6"
+formats["ff6"].display_name = "AKAO4 / Final Fantasy VI"
+formats["ff6"].scanner_data = b"\x00\x8D\x0C\x3F\x48\x06\x8D\x1C" + \
+                              b"\x3F\x48\x06\x8D\x2C\x3F\x48\x06"
+formats["ff6"].bytecode[0xC4] = VolumeCode(2, "v", params=[P(1)], volume_param=1)
+formats["ff6"].bytecode[0xC5] = VolumeCode(3, "v", params=[P(1), P(2)], env_param=1, volume_param=2)
+formats["ff6"].bytecode[0xC6] = Code(2, "p", params=[P(1)]),
+formats["ff6"].bytecode[0xC7] = Code(3, "p", params=[P(1), P(2)], env_param=1),
+formats["ff6"].bytecode[0xF4] = Code(2, "%x", params=[P(1)]),
+formats["ff6"].bytecode[0xF5] = Jump(4, "j", params=[P(1)], dest=Multi(2,2), volta_param=1)
+formats["ff6"].bytecode[0xF6] = Jump(3, ";", dest=Multi(1,2))
+formats["ff6"].bytecode[0xF7] = Code(3, "%b", params=[P(1), P(2)], env_param=1)
+formats["ff6"].bytecode[0xF8] = Code(3, "%f", params=[P(1), P(2)], env_param=1)
+formats["ff6"].bytecode[0xF9] = Code(1, "u1"),
+formats["ff6"].bytecode[0xFA] = Code(1, "u0"),
+formats["ff6"].bytecode[0xFB] = Code(1, "%i"),
+formats["ff6"].bytecode[0xFC] = Jump(3, ":", dest=Multi(1,2))
+formats["ff6"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFD, 0xFE, 0xFF]
+formats["ff6"].hard_jump = [0xF6]
+formats["ff6"].loop_break = [0xF5]
+formats["ff6"].conditional_jump = [0xFC]
 
-formats["rnh"] = Format("16", "rnh", "KAWAKAMI / Rudra no Hihou (TotR)")
+formats["rnh"] = Format("17", "rnh", "KAWAKAMI / Rudra no Hihou (TotR)")
 formats["rnh"].scanner_loc = 0x300
 formats["rnh"].scanner_data = b"\x5D\x3E\xF4\xF0\xFC\xF8\xF4\x30" + \
                               b"\x03\x1F\x85\x03\x1F\x05\x03\xBA"
@@ -1199,8 +1227,8 @@ def trace_segments(data, segs):
                     if counter >= volta_count:
                         #print(f"jumping to volta at {shift(cmdinfo.dest(cmd)):04X}")
                         do_jump = True
-                    if cmd[0] in format.loop_break and iterations > 1:
-                        loop_stack.pop()
+                        if cmd[0] in format.loop_break and iterations > 1:
+                            loop_stack.pop()
                         
             #do stuff if it's a jump or end
             if cmd[0] in format.end_track:
@@ -1212,12 +1240,13 @@ def trace_segments(data, segs):
                 ifprint(f"Found hard jump to {next_loc:04X} ({cmdinfo.dest(cmd):04X})", DEBUG_JUMP_VERBOSE)
                 add_jump(next_loc, cmd[0] in format.volta_jump)
                 rel_octave_set(0)
-                if next_loc in this_trace_segs:
-                    ifprint(f"We've been here before. Ending segment", DEBUG_JUMP_VERBOSE)
-                    finalize(append_before=append_before)
-                    break
-                else:
-                    this_trace_segs.append(next_loc)
+                if cmd[0] in format.hard_jump:
+                    if next_loc in this_trace_segs:
+                        ifprint(f"We've been here before. Ending segment", DEBUG_JUMP_VERBOSE)
+                        finalize(append_before=append_before)
+                        break
+                    else:
+                        this_trace_segs.append(next_loc)
             elif cmd[0] in format.conditional_jump:
                 rel_octave_set(0)
                 target = shift(cmdinfo.dest(cmd))
