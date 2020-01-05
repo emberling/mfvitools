@@ -1,4 +1,4 @@
-VERSION = "alpha 0.04.2"
+VERSION = "alpha 0.04.03"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -8,7 +8,7 @@ CONFIG_REMOVE_REDUNDANT_OCTAVES = True
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
-DEBUG_WRITE_VERBOSE = True
+DEBUG_WRITE_VERBOSE = False
 
 import sys, itertools
 
@@ -301,16 +301,33 @@ class NoteTable(Code):
         Code.__init__(self, length, symbol, **kwargs)
         self.type = "dur_table"
 
+    def _evaluate(self, cmd):
+        return [param(cmd) for param in self.params]
+        
     def write(self, cmd, _):
         text = f"\n{{'Note table: "
-        for param in self.params:
-            text += f"{param(cmd)} "
+        for dur in self._evaluate(cmd):
+            text += f"{dur} "
         text = text.strip() + "'}\n"
         return text
 
-    def get(self, cmd, _ = False):
-        return [param(cmd) for param in self.params]
+    def get(self, cmd, _ = None):
+        return self._evaluate(cmd)
         
+class NoteTableShort(NoteTable):
+    def _evaluate(self, cmd):
+        rawval = self.params[0](cmd)
+        
+        note_values = [0xC0, 0x90, 0x60, 0x48, 0x40, 0x30, 0x24, 0x20,
+                       0x18, 0x12, 0x10, 0x0C, 0x08, 0x06, 0x04, 0x03]
+        note_table = []
+        for i in range(0,16):
+            if rawval & (1 << (15 - i)):
+                note_table.append(note_values[i])
+        
+        return note_table
+        
+            
 #########################
 #### parameter types ####
 #########################
@@ -666,7 +683,7 @@ formats["rnh"].bytecode = {
     0x06: Code(2, "t", params=[TempoScale(1)]),
     0x07: Code(3, "t", params=[P(1), TempoScale(2)], env_param=1),
     0x08: Comment(2, "08 {}", params=[P(1)]),
-    0x09: Comment(1, "09"),
+    0x09: NoteTableShort(3, "{L}", params=[Multi(1,2)]),
     0x0A: NoteTable(8, "{L}", params=[P(1), P(2), P(3), P(4), P(5), P(6), P(7)]),
     0x0B: Code(2, "%k", params=[ShiftedSigned(1, -36)]),
     0x0C: VolumeCode(2, "v", params=[Scaled(1, .5)], volume_param=1),
@@ -698,13 +715,13 @@ formats["rnh"].bytecode = {
     0x26: Comment(1, "26"),
     0x27: Comment(2, "27 {}", params=[P(1)]),
     0x28: Comment(1, "28"),
-    0x29: Code(2, "m", params=[P(1), Signed(2)]),
+    0x29: Code(3, "m", params=[P(1), ScaledSigned(2, .5)]),
     0x2A: Code(2, "[", params=[Increment(1)], collapse_empty=True, count_param=1),
     0x2B: Comment(3, "2B {} {}", params=[P(1), P(2)]),
-    0x2C: Comment(3, "2C {} {} {}", params=[P(1), P(2), P(3)]),
+    0x2C: Comment(4, "2C {} {} {}", params=[P(1), P(2), P(3)]),
     0x2D: Comment(3, "2D {} {}", params=[P(1), P(2)]),
     0x2E: Code(1, "]"),
-    0x2F: Comment(3, "2F {} {} {}", params=[P(1), P(2), P(3)])
+    0x2F: Jump(4, "j", params=[P(1)], dest=Multi(2,2), volta_param=1),
     }
 formats["rnh"].loop_start = [0x2A]
 formats["rnh"].loop_end = [0x2E]
@@ -712,7 +729,7 @@ formats["rnh"].end_track = [0x00]
 formats["rnh"].octave_up = []
 formats["rnh"].octave_down = []
 formats["rnh"].hard_jump = []
-formats["rnh"].volta_jump = []
+formats["rnh"].volta_jump = [0x2F]
 formats["rnh"].loop_break = []
 formats["rnh"].conditional_jump = []
 formats["rnh"].program_base = 0x20
@@ -812,11 +829,11 @@ def parse_header(data, loc=0):
                 ii = i*2
                 pos = int.from_bytes(data[0x1F+ii:0x1F+ii+2], "little")
                 sequence_pos = min(pos, sequence_pos)
-            #at least 8 bytes before the current location should be an 0A
+            #look for 0A or 09 (note table, usually first thing in sequence)
             found = False
-            for i in range(sequence_pos-8, 0xA000, -1):
-                if data[i] == 0x0A:
-                    #17 and 18 bytes before the OA should be <= 8
+            for i in range(sequence_pos-2, 0xA000, -1):
+                if data[i] in [0x09, 0x0A]:
+                    #17 and 18 bytes before the 09/OA should be <= 8
                     if data[i-0x11] <= 8 and data[i-0x12] <= 8:
                         print(f"found kawakami sequence starting at {i:04X}")
                         header_start = i-0x12
@@ -882,12 +899,17 @@ def trace_segments(data, segs):
                 octave_rel += 1
                 rel_octave_delta += 1
         
-    def handle_append(before=None):
-        if before:
+    def finalize(append_before=None):    
+        if rel_octave_delta > 0:
+            append_before += "<" * abs(rel_octave_delta)
+        elif rel_octave_delta < 0:
+            append_before += ">" * abs(rel_octave_delta)
+            
+        if append_before:
             if loc in append_before_items:
-                if append_before_items[loc] != before:
-                    print(f"{loc:04X}: warning: ambiguous prepend ({append_before_items[loc]}) ({before})")
-            append_before_items[loc] = before
+                if append_before_items[loc] != append_before:
+                    print(f"{loc:04X}: warning: ambiguous prepend ({append_before_items[loc]}) ({append_before})")
+            append_before_items[loc] = append_before
                 
     # traverse data starting from header pointers
     # goals:
@@ -950,6 +972,7 @@ def trace_segments(data, segs):
                             print(f"{loc:04X}: ambiguous volume on program set ({program_locs[loc][2]}) ({adjusted_volume()})")
                 else:
                     program_locs[loc] = [program, octave, adjusted_volume()]
+                octave_rel = 0
             elif cmdinfo.type == "volume":
                 volume = cmdinfo.get(cmd, 'volume_param')
                 #print(f"{loc:04X}: set volume to {volume}")
@@ -972,7 +995,12 @@ def trace_segments(data, segs):
             #handle weird kawakami duration stuff
             if format.dynamic_note_duration:
                 if "dur_table" in cmdinfo.type:
-                    dur_table = cmdinfo.get(cmd, "dur_table")
+                    new_dur_table = cmdinfo.get(cmd, "dur_table")
+                    for i, d in enumerate(new_dur_table):
+                        if i >= 7:
+                            print(f"{loc:04X}: warning: likely duration table overflow (length {len(new_dur_table)}")
+                            break
+                        dur_table[i] = d
                 elif "note" in cmdinfo.type:
                     if loc in dynamic_note_durations and dynamic_note_durations[loc] != dur_table[cmdinfo.idx]:
                         print(f"{loc:04X}: ambiguous note duration ({dynamic_note_durations[loc]:02X}) ({dur_table[cmdinfo.idx]:02X})")
@@ -994,7 +1022,7 @@ def trace_segments(data, segs):
             elif cmd[0] in format.loop_end:
                 if not loop_stack:
                     print("warning: segment terminated by loop end")
-                    handle_append(before=append_before)
+                    finalize(append_before=append_before)
                     break
                 else:
                     startloc, iterations, counter = loop_stack[-1]
@@ -1002,7 +1030,7 @@ def trace_segments(data, segs):
                     if iterations == 0 and format.zero_loops_infinite:
                         print("ending segment via infinite loop")
                         replace_items[loc] = ";"
-                        handle_append(before=append_before)
+                        finalize(append_before=append_before)
                         break
                     if counter >= iterations:
                         ifprint(f"{loc:04X}: loop ended at {iterations} iterations", DEBUG_LOOP_VERBOSE)
@@ -1010,7 +1038,7 @@ def trace_segments(data, segs):
                     else:
                         counter += 1
                         ifprint(f"looping back to {startloc:04X} for {counter}rd iteration", DEBUG_LOOP_VERBOSE)
-                        handle_append(before=append_before)
+                        finalize(append_before=append_before)
                         loc = startloc
                         loop_stack[-1] = [startloc, iterations, counter]
                         continue
@@ -1028,7 +1056,7 @@ def trace_segments(data, segs):
                         
             #do stuff if it's a jump or end
             if cmd[0] in format.end_track:
-                handle_append(before=append_before)
+                finalize(append_before=append_before)
                 break
             if cmd[0] in format.hard_jump or do_jump:
                 next_loc = shift(cmdinfo.dest(cmd))
@@ -1037,7 +1065,7 @@ def trace_segments(data, segs):
                 rel_octave_set(0)
                 if next_loc in this_trace_segs:
                     #print(f"We've been here before. Ending segment")
-                    handle_append(before=append_before)
+                    finalize(append_before=append_before)
                     break
                 else:
                     this_trace_segs.append(loc)
@@ -1052,13 +1080,9 @@ def trace_segments(data, segs):
                 rel_octave_set(-1)
             elif "note" in cmdinfo.type:
                 rel_octave_set(0)
-            if rel_octave_delta > 0:
-                append_before += "<" * abs(rel_octave_delta)
-            elif rel_octave_delta < 0:
-                append_before += ">" * abs(rel_octave_delta)
                 
             #move forward
-            handle_append(before=append_before)
+            finalize(append_before=append_before)
             loc = next_loc
             if loc >= len(data):
                 print("Segment terminated unexpectedly")
