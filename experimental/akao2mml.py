@@ -1,4 +1,4 @@
-VERSION = "alpha 0.06.04"
+VERSION = "alpha 0.6.5"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -25,10 +25,66 @@ class Format:
         self.display_name = display_name
         self.sort_as = sort_as
         
+        #placeholders
         self.scanner_loc = 0
-        self.scanner_data = "placeholder"
+        self.scanner_data = "ph"
         self.sequence_loc = 0
-        self.sequence_relative = False
+        self.header_type = 0
+        
+        self.note_table = []
+        self.duration_table = []
+        self.bytecode = {}
+        
+        self.loop_start = []
+        self.loop_end = []
+        self.end_track = []
+        self.octave_up = []
+        self.octave_down = []
+        self.hard_jump = []
+        self.volta_jump = []
+        self.loop_break = []
+        self.conditional_jump = []
+        
+        #defaults
+        self.sequence_relative = True
+        self.percussion_table_loc = None
+        self.use_expression = False
+        self.tempo_scale = 1
+        self.low_octave_notes = []
+        self.note_sort_by_duration = False
+        self.dynamic_note_duration = False
+        self.first_note_id = 0
+        self.zero_loops_infinite = False
+        self.program_base = 0x20
+        self.max_loop_stack = 4
+        
+class PercussionDef:
+    def __init__(self, prg, key, pan):
+        self.prg = prg
+        self.key = key
+        self.pan = pan
+        
+    def write(self):
+        octave = self.key // 12
+        note = note_symbol_by_id[self.key % 12]
+
+        if self.prg >= format.program_base:
+            prgid = self.prg - format.program_base
+            prgtext = f"|{prgid:1X}"
+            if self.prg not in sample_defs:
+                sample_defs[self.prg] = f"#WAVE 0x{self.prg:02X} 0x00"
+                volume_defs[self.prg] = f"#def {prgid:1X}v=   v100" + "\n" + \
+                                        f"#def {prgid:1X}f= v1,100"
+        else:
+            if self.prg >= 10:
+                prgtext = f"@0x{self.prg:02X}"
+            else:
+                prgtext = f"@{self.prg}"
+            if self.prg not in sample_defs:
+                volume_defs[self.prg] = f"#def {self.prg}@v=   v100" + "\n" + \
+                                        f"#def {self.prg}@f= v1,100"
+                
+        return  f"{octave}{note} {prgtext} p{self.pan}"
         
 #######################
 #### command types ####
@@ -72,7 +128,7 @@ class Note(Code):
         
         self.dur = dur
         self.note = format.note_table[noteid]
-        self.percid = noteid if self.note != "r" else None
+        self.percid = noteid if noteid < 12 else None
         
         self.length = 1
         self.symbol = self.note + dur
@@ -184,12 +240,12 @@ class ProgramCode(Code):
                 sample_defs[prog+0x20] = f"#WAVE 0x{prog+0x20:02X} 0x00"
                 program_defs[prog+0x20] = f"#def {prog:1X}i= |{prog:1X}"
                 octave_defs[prog+0x20] = f"#def {prog:1X}o= o5"
-                volume_defs[prog+0x20] = f"#def {prog:1X}v= v100" + "\n" + \
+                volume_defs[prog+0x20] = f"#def {prog:1X}v=   v100" + "\n" + \
                                          f"#def {prog:1X}f= v1,100"
             else:
                 program_defs[progval] = f"#def {progval}@i= @{progval}"
                 octave_defs[progval] = f"#def {progval}@o= o5"
-                volume_defs[progval] = f"#def {progval}@v= v100" + "\n" + \
+                volume_defs[progval] = f"#def {progval}@v=   v100" + "\n" + \
                                        f"#def {progval}@f= v1,100"
                 
         if CONFIG_USE_PROGRAM_MACROS:
@@ -435,6 +491,9 @@ def Fixed(val):
     
 #### format definitions ####
 
+general_note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b"]
+note_symbol_by_id = {i: n for i, n in enumerate(general_note_table)}
+
 formats = {}
 
 formats["ff4"] = Format("01", "ff4", "AKAO1 / Final Fantasy IV")
@@ -444,15 +503,9 @@ formats["ff4"].scanner_data = b"\x20\xC0\xCD\xCF\xBD\xE8\x00\x5D" + \
 formats["ff4"].sequence_loc = 0x2100
 formats["ff4"].sequence_relative = False
 formats["ff4"].header_type = 1 
-formats["ff4"].use_expression = False
 formats["ff4"].tempo_scale = (60000 / 216) / 256
 formats["ff4"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "r", "^"]
 formats["ff4"].duration_table = ["1", "2.", "2", "4.", "3", "4", "8.", "6", "8", "12", "16", "24", "32", "48", "64"]
-formats["ff4"].low_octave_notes = []
-formats["ff4"].note_sort_by_duration = False
-formats["ff4"].dynamic_note_duration = False
-formats["ff4"].first_note_id = 0
-formats["ff4"].zero_loops_infinite = False
 formats["ff4"].bytecode = {
     0xD2: Code(4, "t", params=[Multi(1,2), TempoScale(3)], collapse_empty=True, env_param=1),
     0xD3: Comment(2, "nop {}", params=[P(1)]),
@@ -508,10 +561,7 @@ formats["ff4"].octave_up = [0xE1]
 formats["ff4"].octave_down = [0xE2]
 formats["ff4"].hard_jump = [0xF4]
 formats["ff4"].volta_jump = [0xF5]
-formats["ff4"].loop_break = []
-formats["ff4"].conditional_jump = []
 formats["ff4"].program_base = 0x40
-formats["ff4"].max_loop_stack = 4
 
 formats["rs1"] = Format("02", "rs1", "AKAO2 / Romancing SaGa")
 formats["rs1"].scanner_loc = 0x900
@@ -520,15 +570,9 @@ formats["rs1"].scanner_data = b"\x20\xC0\xCD\xfF\xBD\xE8\x00\x5D" + \
 formats["rs1"].sequence_loc = 0x2100
 formats["rs1"].sequence_relative = False
 formats["rs1"].header_type = 1 
-formats["rs1"].use_expression = False
 formats["rs1"].tempo_scale = (60000 / 216) / 256
 formats["rs1"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "r", "^"]
 formats["rs1"].duration_table = ["1", "2.", "2", "3", "4.", "4", "6", "8.", "8", "12", "16", "24", "32", "48", "64"]
-formats["rs1"].low_octave_notes = []
-formats["rs1"].note_sort_by_duration = False
-formats["rs1"].dynamic_note_duration = False
-formats["rs1"].first_note_id = 0
-formats["rs1"].zero_loops_infinite = False
 formats["rs1"].bytecode = {
     0xD2: Code(2, "t", params=[TempoScale(1)]),
     0xD3: Code(3, "t", params=[P(1), TempoScale(2)], env_param=1),
@@ -584,27 +628,17 @@ formats["rs1"].octave_up = [0xEC]
 formats["rs1"].octave_down = [0xED]
 formats["rs1"].hard_jump = [0xF1]
 formats["rs1"].volta_jump = [0xF0]
-formats["rs1"].loop_break = []
 formats["rs1"].conditional_jump = [0xF6]
-formats["rs1"].program_base = 0x20
-formats["rs1"].max_loop_stack = 4
 
 formats["ffmq"] = Format("03", "ffmq", "AKAO3 / Final Fantasy Mystic Quest")
 formats["ffmq"].scanner_loc = 0x300
 formats["ffmq"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
                               b"\xAF\xC8\xF0\xD0\xFB\x1A\x02\x1A"
 formats["ffmq"].sequence_loc = 0x1D00
-formats["ffmq"].sequence_relative = True
 formats["ffmq"].header_type = 2
-formats["ffmq"].use_expression = False
 formats["ffmq"].tempo_scale = (60000 / 216) / 256
 formats["ffmq"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "^", "r"]
 formats["ffmq"].duration_table = ["1", "2.", "2", "3", "4.", "4", "6", "8.", "8", "12", "16", "24", "32", "48", "64"]
-formats["ffmq"].low_octave_notes = []
-formats["ffmq"].note_sort_by_duration = False
-formats["ffmq"].dynamic_note_duration = False
-formats["ffmq"].first_note_id = 0
-formats["ffmq"].zero_loops_infinite = False
 formats["ffmq"].bytecode = {
     0xD2: VolumeCode(2, "v", params=[Scaled(1, .5)], volume_param=1),
     0xD3: VolumeCode(3, "v", params=[P(1), Scaled(2, .5)], env_param=1, volume_param=2),
@@ -660,10 +694,7 @@ formats["ffmq"].octave_up = [0xE5]
 formats["ffmq"].octave_down = [0xE6]
 formats["ffmq"].hard_jump = [0xFA]
 formats["ffmq"].volta_jump = [0xF9]
-formats["ffmq"].loop_break = []
 formats["ffmq"].conditional_jump = [0xFB]
-formats["ffmq"].program_base = 0x20
-formats["ffmq"].max_loop_stack = 4
 
 formats["ff5"] = copy.deepcopy(formats["ffmq"])
 formats["ff5"].sort_as = "04"
@@ -691,17 +722,10 @@ formats["rs2"].scanner_loc = 0x310
 formats["rs2"].scanner_data = b"\x00\x8D\x0C\x3F\x5C\x06\x8D\x1C" + \
                               b"\x3F\x5C\x06\x8D\x2C\x3F\x5C\x06"
 formats["rs2"].sequence_loc = 0x1D00
-formats["rs2"].sequence_relative = True
 formats["rs2"].header_type = 4
-formats["rs2"].use_expression = False
 formats["rs2"].tempo_scale = (60000 / 216) / 256
 formats["rs2"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "^", "r"]
 formats["rs2"].duration_table = ["1", "2", "3", "4.", "4", "6", "8.", "8", "12", "16", "24", "32", "48", "64"]
-formats["rs2"].low_octave_notes = []
-formats["rs2"].note_sort_by_duration = False
-formats["rs2"].dynamic_note_duration = False
-formats["rs2"].first_note_id = 0
-formats["rs2"].zero_loops_infinite = False
 formats["rs2"].bytecode = {
     0xC4: VolumeCode(2, "v", params=[Scaled(1, .5)], volume_param=1),
     0xC5: VolumeCode(3, "v", params=[P(1), Scaled(2, .5)], env_param=1, volume_param=2),
@@ -770,11 +794,7 @@ formats["rs2"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFB, 0xFC, 0xFD, 0xFE
 formats["rs2"].octave_up = [0xD7]
 formats["rs2"].octave_down = [0xD8]
 formats["rs2"].hard_jump = [0xF7]
-formats["rs2"].volta_jump = []
 formats["rs2"].loop_break = [0xF6]
-formats["rs2"].conditional_jump = []
-formats["rs2"].program_base = 0x20
-formats["rs2"].max_loop_stack = 4
 
 formats["lal"] = copy.deepcopy(formats["rs2"])
 formats["lal"].sort_as = "07"
@@ -792,6 +812,7 @@ formats["ff6"].id = "ff6"
 formats["ff6"].display_name = "AKAO4 / Final Fantasy VI"
 formats["ff6"].scanner_data = b"\x00\x8D\x0C\x3F\x48\x06\x8D\x1C" + \
                               b"\x3F\x48\x06\x8D\x2C\x3F\x48\x06"
+formats["ff6"].tempo_scale = 1
 formats["ff6"].bytecode[0xC4] = VolumeCode(2, "v", params=[P(1)], volume_param=1)
 formats["ff6"].bytecode[0xC5] = VolumeCode(3, "v", params=[P(1), P(2)], env_param=1, volume_param=2)
 formats["ff6"].bytecode[0xC6] = Code(2, "p", params=[P(1)])
@@ -817,7 +838,9 @@ formats["fm"].display_name = "AKAO4 / Front Mission"
 formats["fm"].scanner_data = b"\xC7\xE8\x00\x8D\x2C\x3F\x05\x07" + \
                              b"\x8D\x3C\x3F\x05\x07\xCD\x40\xD5"
 formats["fm"].sequence_loc = 0x2100
+formats["fm"].percussion_table_loc = 0xF220
 formats["fm"].use_expression = True
+formats["fm"].tempo_scale = (60000 / 252) / 256
 formats["fm"].bytecode[0xF9] = Comment(2, "F9 {}", params=[P(1)])
 formats["fm"].bytecode[0xFA] = Jump(3, ":", dest=Multi(1,2))
 formats["fm"].bytecode[0xFB] = Percussion(1, True)
@@ -841,6 +864,7 @@ formats["rs3"].display_name = "AKAO4 / Romancing SaGa 3"
 formats["rs3"].scanner_data = b"\xBC\x8D\x2C\x3F\x97\x07\x8D\x3C" + \
                               b"\x3F\x97\x07\xCD\x40\xD5\x68\xF1"
 formats["rs3"].sequence_loc = 0x2300
+formats["rs3"].tempo_scale = 1
 formats["rs3"].bytecode[0xF4] = ExpressionCode(2, "{e}", params=[P(1)], expression_param=1)
 formats["rs3"].bytecode[0xF7] = Code(2, "%b0,", params=[P(1)])
 formats["rs3"].bytecode[0xF8] = Code(2, "%f0,", params=[P(1)])
@@ -864,6 +888,7 @@ formats["gh"].display_name = "AKAO4 / Front Mission: Gun Hazard"
 formats["gh"].scanner_data = b"\xC4\x8D\x2C\x3F\x40\x07\x8D\x3C" + \
                              b"\x3F\x40\x07\xCD\x40\xD5\x6E\xF8"
 formats["gh"].sequence_loc = 0x2300
+formats["fm"].percussion_table_loc = 0xF920
 formats["gh"].bytecode[0xEB] = Comment(2, "EB {}", params=[P(1)])
 formats["gh"].bytecode[0xFD] = Code(1, ";")
 formats["gh"].bytecode[0xFE] = Code(1, ";")
@@ -874,16 +899,13 @@ formats["rnh"].scanner_loc = 0x300
 formats["rnh"].scanner_data = b"\x5D\x3E\xF4\xF0\xFC\xF8\xF4\x30" + \
                               b"\x03\x1F\x85\x03\x1F\x05\x03\xBA"
 formats["rnh"].sequence_loc = 0x100 #dynamic location
-formats["rnh"].sequence_relative = True
-formats["rnh"].header_type = 6
+formats["rnh"].header_type = 7
 formats["rnh"].use_expression = True
 formats["rnh"].tempo_scale = 1 #unknown
 formats["rnh"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "^", "r"]
 formats["rnh"].duration_table = [0xC0, 0x60, 0x48, 0x30, 0x24, 0x18, 0x0C, None]
 formats["rnh"].low_octave_notes = range(0x30,0x90)
-formats["rnh"].note_sort_by_duration = False
 formats["rnh"].dynamic_note_duration = True
-formats["rnh"].note_table_octaves = 2
 formats["rnh"].first_note_id = 0x30
 formats["rnh"].zero_loops_infinite = True
 formats["rnh"].bytecode = {
@@ -939,14 +961,7 @@ formats["rnh"].bytecode = {
 formats["rnh"].loop_start = [0x2A]
 formats["rnh"].loop_end = [0x2E]
 formats["rnh"].end_track = [0x00]
-formats["rnh"].octave_up = []
-formats["rnh"].octave_down = []
-formats["rnh"].hard_jump = []
 formats["rnh"].volta_jump = [0x2F]
-formats["rnh"].loop_break = []
-formats["rnh"].conditional_jump = []
-formats["rnh"].program_base = 0x20
-formats["rnh"].max_loop_stack = 4
 
 ####################
 #### procedures ####
@@ -1003,13 +1018,25 @@ def register_notes():
                     format.bytecode[i * multiplier + j + format.first_note_id] = KawakamiNote(note, j)
                 else: #akao
                     format.bytecode[i * multiplier + j + format.first_note_id] = Note(i, dur)
-                
+           
+def register_percussion_note(prg=0x2F, key=69, pan=64, symbol=None, id=None):
+    if symbol is None:
+        if id is None:
+            return
+        else:
+            symbol = note_symbol_by_id[id]
+    
+    percussion_defs[symbol] = PercussionDef(prg, key, pan)
+    ifprint(f"Defined percussion {symbol} as {percussion_defs[symbol].write()}", DEBUG_PERC_VERBOSE)
+
+    
 # # # # # HEADER # # # # #
 
 def parse_header(data, loc=0):
     tracks = {}
     end = None
     header_start = 0
+    
     if format.header_type == 1: ### ff4, rs1 ###
         header_length = 0x10
         shift_amt = format.sequence_loc - 0x100
@@ -1019,6 +1046,7 @@ def parse_header(data, loc=0):
             track_start = int.from_bytes(header[ii:ii+2], "little")
             if track_start > 0:
                 tracks[i] = track_start
+                
     elif format.header_type == 2: ### ffmq ###
         header_length = 0x12
         header = data[loc:loc+header_length]
@@ -1029,6 +1057,7 @@ def parse_header(data, loc=0):
             track_start = int.from_bytes(header[ii:ii+2], "little")
             if track_start != end:
                 tracks[i] = track_start
+                
     elif format.header_type == 3: ### ff5, sd2 ###
         header_length = 0x14
         header = data[loc:loc+header_length]
@@ -1039,6 +1068,7 @@ def parse_header(data, loc=0):
             track_start = int.from_bytes(header[ii:ii+2], "little")
             if track_start != end:
                 tracks[i] = track_start
+                
     elif format.header_type == 4: ### akao4 ###
         header_length = 0x24
         header = data[loc:loc+header_length]
@@ -1050,7 +1080,16 @@ def parse_header(data, loc=0):
             if track_start != end:
                 if i < 8 or ( (i-8) in tracks and track_start != tracks[i-8] ): 
                     tracks[i] = track_start
-    elif format.header_type == 6: ### rnh ###
+        
+        #akao4 percussion
+        if percussion_data:
+            for i in range(12):
+                ii = i*3
+                prg, key, pan = percussion_data[ii:ii+3]
+                if key:
+                    register_percussion_note(prg, key, pan, id=i)
+            
+    elif format.header_type == 7: ### rnh ###
         header_length = 0x12
         if spc_mode:
             #finding the sequence start is a bit of a hack..
@@ -1090,6 +1129,7 @@ def parse_header(data, loc=0):
         else:
             header_start = 0
             header = data[0:header_length]
+            
             
         edl = header[0]
         echo_buffer_size = edl * 0x800
@@ -1190,7 +1230,7 @@ def trace_segments(data, segs):
         print(f"tracing segment {loc:04X}...")
         while True:
             append_before = ""
-            
+        
             #read control byte
             cmd = data[loc]
             cmdinfo = format.bytecode[cmd]
@@ -1203,6 +1243,48 @@ def trace_segments(data, segs):
             
             next_loc = loc + cmdinfo.length
             
+            #handle percussion
+            if "PercOn" in cmdinfo.type:
+                percussion = True
+                percussion_state = None
+                ifprint(f"{loc:04X}: PercOn - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
+            elif "PercOff" in cmdinfo.type:
+                percussion = False
+                percussion_state = None
+                if percussion_marked:
+                    percussion_ends.add(loc)
+                ifprint(f"{loc:04X}: PercOff - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
+            if percussion:
+                if loc in percussion_states:
+                    ops = percussion_states[loc]
+                else:
+                    ops = None
+                ifprint(f"{loc:04X}: {cmdinfo.symbol} - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} ops {ops} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
+                if cmdinfo.percid is not None:
+                    ifprint("Is a percussion note", DEBUG_PERC_VERBOSE)
+                    if not percussion_marked:
+                        ifprint("Mark inactive, activating", DEBUG_PERC_VERBOSE)
+                        percussion_starts.add(loc)
+                        percussion_marked = True
+                    if percussion_state is None:
+                        ifprint("State inactive, resetting", DEBUG_PERC_VERBOSE)
+                        percussion_resets.add(loc)
+                    elif loc in percussion_states and percussion_state is not None and percussion_states[loc] != percussion_state:
+                        ifprint("State ambiguous, resetting", DEBUG_PERC_VERBOSE)
+                        percussion_resets.add(loc)
+                    percussion_states[loc] = percussion_state
+                    percussion_state = cmdinfo.percid
+                    if note_symbol_by_id[cmdinfo.percid] not in percussion_defs:
+                        register_percussion_note(id=cmdinfo.percid)
+                    perc_prg = percussion_defs[note_symbol_by_id[cmdinfo.percid]].prg
+                    if perc_prg != program:
+                        program = perc_prg
+                else:
+                    if percussion_marked:
+                        ifprint("Not a percussion note, mark active, deactivating", DEBUG_PERC_VERBOSE)
+                        percussion_ends.add(loc)
+                        percussion_marked = False
+                        
             #track states
             rel_octave_delta = 0
             
@@ -1257,42 +1339,6 @@ def trace_segments(data, segs):
                     elif cmdinfo.length == 1:
                         dynamic_note_durations[loc] = dur_table[cmdinfo.idx]
                 
-            #handle percussion
-            if "PercOn" in cmdinfo.type:
-                percussion = True
-                percussion_state = None
-                ifprint(f"{loc:04X}: PercOn - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
-            elif "PercOff" in cmdinfo.type:
-                percussion = False
-                percussion_state = None
-                if percussion_marked:
-                    percussion_ends.add(loc)
-                ifprint(f"{loc:04X}: PercOff - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
-            if percussion:
-                if loc in percussion_states:
-                    ops = percussion_states[loc]
-                else:
-                    ops = None
-                ifprint(f"{loc:04X}: {cmdinfo.symbol} - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} ops {ops} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
-                if cmdinfo.percid is not None:
-                    ifprint("Is a percussion note", DEBUG_PERC_VERBOSE)
-                    if not percussion_marked:
-                        ifprint("Mark inactive, activating", DEBUG_PERC_VERBOSE)
-                        percussion_starts.add(loc)
-                        percussion_marked = True
-                    if percussion_state is None:
-                        ifprint("State inactive, resetting", DEBUG_PERC_VERBOSE)
-                        percussion_resets.add(loc)
-                    elif loc in percussion_states and percussion_state is not None and percussion_states[loc] != percussion_state:
-                        ifprint("State ambiguous, resetting", DEBUG_PERC_VERBOSE)
-                        percussion_resets.add(loc)
-                    percussion_states[loc] = percussion_state
-                    percussion_state = cmdinfo.percid
-                else:
-                    if percussion_marked:
-                        ifprint("Not a percussion note, mark active, deactivating", DEBUG_PERC_VERBOSE)
-                        percussion_ends.add(loc)
-                        percussion_marked = False
             #handle loops
             do_jump = False
             if cmd[0] in format.loop_start:
@@ -1468,6 +1514,10 @@ def clean_end():
     input("Press enter to close.")
     quit()
     
+############
+### MAIN ###
+############
+
 if __name__ == "__main__":
         
     print(f"mfvitools general binary-to-MML converter")
@@ -1536,14 +1586,20 @@ if __name__ == "__main__":
     dynamic_note_durations = {}
     note_tables = {}
     append_before_items = {}
+    percussion_data = b""
     percussion_starts = set()
     percussion_ends = set()
     percussion_resets = set()
     percussion_states = {}
+    percussion_defs = {}
     replace_items = {}
     
+    if spc_mode and format.percussion_table_loc is not None:
+        percussion_data = bin[format.percussion_table_loc:format.percussion_table_loc+0x24]
+        
     bin = bin[origin:]
     tracks, shift_amount, end, header_start, header_length = parse_header(bin)
+    
     if header_start: #kawakami
         bin = bin[header_start:end]
     elif format.sequence_relative: #akao3, akao4
@@ -1562,6 +1618,11 @@ if __name__ == "__main__":
         prepend += [""] + [v for k,v in sorted(octave_defs.items())]
     if CONFIG_USE_VOLUME_MACROS:
         prepend += [""] + [v for k,v in sorted(volume_defs.items())]
+    if percussion_defs:
+        prepend += [""]
+        for k, v in sorted(percussion_defs.items()):
+            prepend += [f'#drum "{k}"= {v.write()}']
+            
     mml = prepend + mml
     
     fn = fn.rpartition('.')[0]
