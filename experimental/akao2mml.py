@@ -1,4 +1,4 @@
-VERSION = "alpha 0.06.02"
+VERSION = "alpha 0.06.03"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -295,6 +295,10 @@ class ExpressionCode(VolumeCode):
             self.expression_param = 0
             self.volume_param = 0
 
+class Percussion(Code):
+    def __init__(self, length, on, **kwargs):
+        Code.__init__(self, length, "{P" + ("+" if on else "-") + "}", **kwargs)
+        
 class NoteTable(Code):
     def __init__(self, length, symbol, **kwargs):
         Code.__init__(self, length, symbol, **kwargs)
@@ -325,7 +329,6 @@ class NoteTableShort(NoteTable):
                 note_table.append(note_values[i])
         
         return note_table
-        
             
 #########################
 #### parameter types ####
@@ -421,7 +424,8 @@ def Fixed(val):
     # 13: ("bl", "SUZUKI / Bahamut Lagoon"),
     # 14: ("fmgh", "AKAO4 / Front Mission: Gun Hazard"),
     # 15: ("smrpg", "SUZUKI / Super Mario RPG")
-
+    # 16: ("rnh", "KAWAKAMI / Rudra no Hihou (Treasure of the Rudras)")
+    
 #### format definitions ####
 
 formats = {}
@@ -783,21 +787,80 @@ formats["ff6"].scanner_data = b"\x00\x8D\x0C\x3F\x48\x06\x8D\x1C" + \
                               b"\x3F\x48\x06\x8D\x2C\x3F\x48\x06"
 formats["ff6"].bytecode[0xC4] = VolumeCode(2, "v", params=[P(1)], volume_param=1)
 formats["ff6"].bytecode[0xC5] = VolumeCode(3, "v", params=[P(1), P(2)], env_param=1, volume_param=2)
-formats["ff6"].bytecode[0xC6] = Code(2, "p", params=[P(1)]),
-formats["ff6"].bytecode[0xC7] = Code(3, "p", params=[P(1), P(2)], env_param=1),
-formats["ff6"].bytecode[0xF4] = Code(2, "%x", params=[P(1)]),
+formats["ff6"].bytecode[0xC6] = Code(2, "p", params=[P(1)])
+formats["ff6"].bytecode[0xC7] = Code(3, "p", params=[P(1), P(2)], env_param=1)
+formats["ff6"].bytecode[0xF4] = Code(2, "%x", params=[P(1)])
 formats["ff6"].bytecode[0xF5] = Jump(4, "j", params=[P(1)], dest=Multi(2,2), volta_param=1)
 formats["ff6"].bytecode[0xF6] = Jump(3, ";", dest=Multi(1,2))
 formats["ff6"].bytecode[0xF7] = Code(3, "%b", params=[P(1), P(2)], env_param=1)
 formats["ff6"].bytecode[0xF8] = Code(3, "%f", params=[P(1), P(2)], env_param=1)
-formats["ff6"].bytecode[0xF9] = Code(1, "u1"),
-formats["ff6"].bytecode[0xFA] = Code(1, "u0"),
-formats["ff6"].bytecode[0xFB] = Code(1, "%i"),
+formats["ff6"].bytecode[0xF9] = Code(1, "u1")
+formats["ff6"].bytecode[0xFA] = Code(1, "u0")
+formats["ff6"].bytecode[0xFB] = Code(1, "%i")
 formats["ff6"].bytecode[0xFC] = Jump(3, ":", dest=Multi(1,2))
 formats["ff6"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFD, 0xFE, 0xFF]
 formats["ff6"].hard_jump = [0xF6]
 formats["ff6"].loop_break = [0xF5]
 formats["ff6"].conditional_jump = [0xFC]
+
+formats["fm"] = copy.deepcopy(formats["ff6"])
+formats["fm"].sort_as = "09"
+formats["fm"].id = "fm"
+formats["fm"].display_name = "AKAO4 / Front Mission"
+formats["fm"].scanner_data = b"\xC7\xE8\x00\x8D\x2C\x3F\x05\x07" + \
+                             b"\x8D\x3C\x3F\x05\x07\xCD\x40\xD5"
+formats["fm"].sequence_loc = 0x2100
+formats["fm"].use_expression = True
+formats["fm"].bytecode[0xF9] = Comment(2, "F9 {}", params=[P(1)])
+formats["fm"].bytecode[0xFA] = Jump(3, ":", dest=Multi(1,2))
+formats["fm"].bytecode[0xFB] = Percussion(1, True)
+formats["fm"].bytecode[0xFC] = Percussion(1, False)
+formats["fm"].bytecode[0xFD] = ExpressionCode(2, "{e}", params=[P(1)], expression_param=1)
+formats["fm"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFE, 0xFF]
+formats["fm"].conditional_jump = [0xFA]
+
+formats["ct"] = copy.deepcopy(formats["fm"])
+formats["ct"].sort_as = "10"
+formats["ct"].id = "ct"
+formats["ct"].display_name = "AKAO4 / Chrono Trigger"
+formats["ct"].scanner_data = b"\xBB\x8D\x2C\x3F\xA3\x07\x8D\x3C" + \
+                             b"\x3F\xA3\x07\xCD\x40\xD5\x6E\xF1"
+formats["ct"].bytecode[0xF9] = Comment(2, "CpuSetValue {}", params=[P(1)])
+
+formats["rs3"] = copy.deepcopy(formats["ct"])
+formats["rs3"].sort_as = "12"
+formats["rs3"].id = "ct"
+formats["rs3"].display_name = "AKAO4 / Romancing SaGa 3"
+formats["rs3"].scanner_data = b"\xBC\x8D\x2C\x3F\x97\x07\x8D\x3C" + \
+                              b"\x3F\x97\x07\xCD\x40\xD5\x68\xF1"
+formats["rs3"].sequence_loc = 0x2300
+formats["rs3"].bytecode[0xF4] = ExpressionCode(2, "{e}", params=[P(1)], expression_param=1)
+formats["rs3"].bytecode[0xF7] = Code(2, "%b0,", params=[P(1)])
+formats["rs3"].bytecode[0xF8] = Code(2, "%f0,", params=[P(1)])
+formats["rs3"].bytecode[0xFD] = Comment(2, "PlaySfx {}", params=[P(1)])
+
+formats["bs"] = copy.deepcopy(formats["rs3"])
+formats["bs"].sort_as = "13"
+formats["bs"].id = "ct"
+formats["bs"].display_name = "AKAO4 / BS - DynamiTracer, Treasure Conflix, Koi ha Balance, Radical Dreamers"
+formats["bs"].scanner_data = b"\xC4\x8D\x2C\x3F\x1F\x08\x8D\x3C" + \
+                             b"\x3F\x1F\x08\xCD\x40\xD5\x6E\xF1"
+formats["bs"].sequence_loc = 0x2500
+formats["bs"].bytecode[0xFD] = Comment(2, "FD {}", params=[P(1)])
+formats["bs"].bytecode[0xFE] = Comment(1, "FE")
+formats["bs"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFF]
+
+formats["gh"] = copy.deepcopy(formats["bs"])
+formats["gh"].sort_as = "15"
+formats["gh"].id = "gh"
+formats["gh"].display_name = "AKAO4 / Front Mission: Gun Hazard"
+formats["gh"].scanner_data = b"\xC4\x8D\x2C\x3F\x40\x07\x8D\x3C" + \
+                             b"\x3F\x40\x07\xCD\x40\xD5\x6E\xF8"
+formats["gh"].sequence_loc = 0x2300
+formats["gh"].bytecode[0xEB] = Comment(2, "EB {}", params=[P(1)])
+formats["gh"].bytecode[0xFD] = Code(1, ";")
+formats["gh"].bytecode[0xFE] = Code(1, ";")
+formats["gh"].end_track = [0xEC, 0xED, 0xEE, 0xEF, 0xFD, 0xFE, 0xFF]
 
 formats["rnh"] = Format("17", "rnh", "KAWAKAMI / Rudra no Hihou (TotR)")
 formats["rnh"].scanner_loc = 0x300
@@ -1061,7 +1124,7 @@ def trace_segments(data, segs):
         
     def adjusted_volume():
         try:
-            return int(volume * (expression / 0xFF))
+            return int(volume * (expression / 0x7F))
         except TypeError:
             return None
             
@@ -1104,7 +1167,7 @@ def trace_segments(data, segs):
         octave = 5 if format.low_octave_notes else None
         octave_rel = 0
         volume = None
-        expression = None if format.use_expression else 0xFF
+        expression = 0x7F
         program = None
         jump_counter = 1
         dur_table = []
