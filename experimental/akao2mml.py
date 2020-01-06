@@ -1,4 +1,4 @@
-VERSION = "alpha 0.6.5"
+VERSION = "alpha 0.7.0"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -50,6 +50,7 @@ class Format:
         self.percussion_table_loc = None
         self.use_expression = False
         self.tempo_scale = 1
+        self.tempo_offset = None
         self.low_octave_notes = []
         self.note_sort_by_duration = False
         self.dynamic_note_duration = False
@@ -252,15 +253,6 @@ class ProgramCode(Code):
             text = f"\n'{macro_id}i'"
             if loc in program_locs:
                 program, octave, volume = program_locs[loc]
-                if CONFIG_USE_OCTAVE_MACROS and octave is not None:
-                    rel = octave - 5
-                    text += f"'{macro_id}o"
-                    if rel:
-                        text += f"{'+' if rel > 0 else '-'}o{abs(rel)}"
-                    text += "'"
-                if CONFIG_USE_VOLUME_MACROS and volume is not None:
-                    vol = f"{volume / 100:.2f}".lstrip('0')
-                    text += f"'{macro_id}v*v{vol}'"
             text += ' '
         return text
         
@@ -285,24 +277,31 @@ class OctaveCode(Code):
             octave = self.params[self.octave_param](cmd)
             
             if loc in octave_locs:
-                progval = octave_locs[loc]
+                progval = octave_locs[loc][0]
             else:
                 progval = None
-            if progval is None:
-                macro_id = "??"
-                print(f"warning: unknown program in octave change at {loc:04X}")
-            elif progval >= 0x20:
-                macro_id = f"{progval-0x20:1X}"
-            else:
-                macro_id = f"{progval}@"
-            rel = octave - 5
-            text = f"'{macro_id}o"
-            if rel:
-                text += f"{'+' if rel > 0 else '-'}o{abs(rel)}"
-            text += "'"
+            text = write_octave_macro(progval, octave, loc)
         else:
             text = Code.write(self, cmd, loc)
         return text
+            
+def write_octave_macro(progval, octave, loc=0):    
+    if octave is None:
+        return ""
+    if progval is None:
+        macro_id = "??"
+        print(f"warning: unknown program in octave change at {loc:04X}")
+    elif progval >= 0x20:
+        macro_id = f"{progval-0x20:1X}"
+    else:
+        macro_id = f"{progval}@"
+        
+    rel = octave - 5
+    text = f"'{macro_id}o"
+    if rel:
+        text += f"{'+' if rel > 0 else '-'}o{abs(rel)}"
+    text += "'"
+    return text
             
 class VolumeCode(Code):
     def __init__(self, length, symbol, **kwargs):
@@ -318,31 +317,35 @@ class VolumeCode(Code):
             volume = self.params[self.volume_param](cmd)
             if "env_param" in self.kwargs:
                 env = self.params[self.kwargs["env_param"]-1](cmd)
-                env_text = f"{env},"
             else:
                 env = None
-                env_text = ""
-            
             if self.collapse_empty and not env:
-                env_text = ""
+                env = None
                 
             if loc in volume_locs:
-                progval = volume_locs[loc]
+                progval = volume_locs[loc][0]
             else:
                 progval = None
-            if progval is None:
-                macro_id = "??"
-                print(f"warning: unknown program in volume change at {loc:04X}")
-            elif progval >= 0x20:
-                macro_id = f"{progval-0x20:1X}"
-            else:
-                macro_id = f"{progval}@"
-            vol = f"{volume / 100:.2f}".lstrip('0')
-            text = f"'{macro_id}{'f' if env else 'v'}*v{env_text}{vol}'"
+            text = write_volume_macro(progval, volume, env=env, loc=loc)
         else:
             text = Code.write(self, cmd, loc)
         return text
         
+def write_volume_macro(progval, volume, env=None, loc=0):
+    if volume is None:
+        return ""
+    env_text = "" if env is None else f"{env},"
+    if progval is None:
+        macro_id = "??"
+        print(f"warning: unknown program in volume change at {loc:04X}")
+    elif progval >= 0x20:
+        macro_id = f"{progval-0x20:1X}"
+    else:
+        macro_id = f"{progval}@"
+    vol = f"{volume / 100:.2f}".lstrip('0')
+    text = f"'{macro_id}{'f' if env else 'v'}*v{env_text}{vol}'"
+    return text
+    
 class ExpressionCode(VolumeCode):
     def __init__(self, length, symbol, **kwargs):
         Code.__init__(self, length, symbol, **kwargs)
@@ -415,7 +418,10 @@ def Scaled(pos, scale):
     
 def TempoScale(pos):
     def readp(cmd):
-        return min(0xFF, int(cmd[pos] * format.tempo_scale))
+        tempo = int(cmd[pos] * format.tempo_scale)
+        if format.tempo_offset:
+            tempo += (int(tempo * format.tempo_offset) >> 8)
+        return min(0xFF, tempo)
     return readp
     
 def LfoScale(pos):
@@ -841,6 +847,7 @@ formats["fm"].sequence_loc = 0x2100
 formats["fm"].percussion_table_loc = 0xF220
 formats["fm"].use_expression = True
 formats["fm"].tempo_scale = (60000 / 252) / 256
+formats["fm"].tempo_offset = 0x14
 formats["fm"].bytecode[0xF9] = Comment(2, "F9 {}", params=[P(1)])
 formats["fm"].bytecode[0xFA] = Jump(3, ":", dest=Multi(1,2))
 formats["fm"].bytecode[0xFB] = Percussion(1, True)
@@ -865,6 +872,7 @@ formats["rs3"].scanner_data = b"\xBC\x8D\x2C\x3F\x97\x07\x8D\x3C" + \
                               b"\x3F\x97\x07\xCD\x40\xD5\x68\xF1"
 formats["rs3"].sequence_loc = 0x2300
 formats["rs3"].tempo_scale = 1
+formats["rs3"].tempo_offset = None
 formats["rs3"].bytecode[0xF4] = ExpressionCode(2, "{e}", params=[P(1)], expression_param=1)
 formats["rs3"].bytecode[0xF7] = Code(2, "%b0,", params=[P(1)])
 formats["rs3"].bytecode[0xF8] = Code(2, "%f0,", params=[P(1)])
@@ -1217,6 +1225,12 @@ def trace_segments(data, segs):
         volume = None
         expression = 0x7F
         program = None
+        program_changed = False
+        block_volume_cmds = []
+        block_octave_cmds = []
+        block_octave_rel = {}
+        volume_set = False
+        octave_set = False
         jump_counter = 1
         percussion = False
         percussion_marked = False
@@ -1242,7 +1256,7 @@ def trace_segments(data, segs):
                 eof = loc + len(cmd)
             
             next_loc = loc + cmdinfo.length
-            
+                        
             #handle percussion
             if "PercOn" in cmdinfo.type:
                 percussion = True
@@ -1261,16 +1275,16 @@ def trace_segments(data, segs):
                     ops = None
                 ifprint(f"{loc:04X}: {cmdinfo.symbol} - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} ops {ops} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
                 if cmdinfo.percid is not None:
-                    ifprint("Is a percussion note", DEBUG_PERC_VERBOSE)
+                    ifprint("perc: Is a percussion note", DEBUG_PERC_VERBOSE)
                     if not percussion_marked:
-                        ifprint("Mark inactive, activating", DEBUG_PERC_VERBOSE)
+                        ifprint("perc: Mark is inactive, activating", DEBUG_PERC_VERBOSE)
                         percussion_starts.add(loc)
                         percussion_marked = True
                     if percussion_state is None:
-                        ifprint("State inactive, resetting", DEBUG_PERC_VERBOSE)
+                        ifprint("perc: State is inactive, resetting", DEBUG_PERC_VERBOSE)
                         percussion_resets.add(loc)
                     elif loc in percussion_states and percussion_state is not None and percussion_states[loc] != percussion_state:
-                        ifprint("State ambiguous, resetting", DEBUG_PERC_VERBOSE)
+                        ifprint("perc: State is ambiguous, resetting", DEBUG_PERC_VERBOSE)
                         percussion_resets.add(loc)
                     percussion_states[loc] = percussion_state
                     percussion_state = cmdinfo.percid
@@ -1281,7 +1295,7 @@ def trace_segments(data, segs):
                         program = perc_prg
                 else:
                     if percussion_marked:
-                        ifprint("Not a percussion note, mark active, deactivating", DEBUG_PERC_VERBOSE)
+                        ifprint("perc: Not a percussion note, mark is active, deactivating", DEBUG_PERC_VERBOSE)
                         percussion_ends.add(loc)
                         percussion_marked = False
                         
@@ -1289,7 +1303,9 @@ def trace_segments(data, segs):
             rel_octave_delta = 0
             
             if cmdinfo.type == "program":
-                program = cmdinfo.get(cmd)
+                if cmdinfo.get(cmd) != program:
+                    program = cmdinfo.get(cmd)
+                    program_changed = True
                 ifprint(f"{loc:04X}: set program to {program:02X}", DEBUG_STATE_VERBOSE)
                 if loc in program_locs:
                     if program_locs[loc][1] != octave:
@@ -1307,23 +1323,60 @@ def trace_segments(data, segs):
                 octave_rel = 0
             elif cmdinfo.type == "volume":
                 volume = cmdinfo.get(cmd, 'volume_param')
+                block_volume_cmds.append((loc, adjusted_volume()))
+                volume_set = True
                 ifprint(f"{loc:04X}: set volume to {volume}", DEBUG_STATE_VERBOSE)
-                volume_locs[loc] = program
+                #volume_locs[loc] = program
             elif cmdinfo.type == "expression":
                 expression = cmdinfo.get(cmd, 'expression_param')
+                block_volume_cmds.append((loc, adjusted_volume()))
+                volume_set = True
                 ifprint(f"{loc:04X}: set expression to {expression}", DEBUG_STATE_VERBOSE)
-                volume_locs[loc] = program
+                #volume_locs[loc] = program
             elif cmdinfo.type == "octave":
                 octave = cmdinfo.get(cmd, 'octave_param')
+                block_octave_cmds.append(loc)
+                octave_set = True
                 ifprint(f"{loc:04X}: set octave to {octave}", DEBUG_STATE_VERBOSE)
-                octave_locs[loc] = program
+                #octave_locs[loc] = program
             elif cmd[0] in format.octave_up and octave:
+                block_octave_rel[loc] = cmd
                 octave += 1
                 #print(f"{loc:04X}: raise octave to {octave}")
             elif cmd[0] in format.octave_down and octave:
+                block_octave_rel[loc] = cmd
                 octave -= 1
                 #print(f"{loc:04X}: lower octave to {octave}")
 
+            #handle static block on active block start
+            if "note" in cmdinfo.type:
+                if program_changed:
+                    if not volume_set:
+                        volume_set = True
+                        block_volume_cmds.append((loc, volume))
+                    if not octave_set and not percussion:
+                        octave_set = True
+                        block_octave_cmds.append(loc)
+                for vloc, vol in block_volume_cmds:
+                    volume_locs[vloc] = program, vol
+                for oloc in block_octave_cmds:
+                    octave_locs[oloc] = program, octave
+                #handle </> redundancy
+                for roloc, _ in block_octave_rel.items():
+                    if octave_set:
+                        if roloc not in redundant_items:
+                            redundant_items[roloc] = True
+                    else:
+                        redundant_items[roloc] = False
+                        
+                #reset static-block counters
+                block_volume_cmds = []
+                block_octave_cmds = []
+                block_octave_rel = {}
+                volume_set = False
+                octave_set = False
+                program_changed = False
+                
             #handle weird kawakami duration stuff
             if format.dynamic_note_duration:
                 if "dur_table" in cmdinfo.type:
@@ -1454,7 +1507,7 @@ def write_mml(data):
     percussion_end_state = False
     while loc < len(data):
         #text maintenance
-        if len(line.rpartition('\n')) >= 70:
+        if len(line.rpartition('\n')[2]) >= 70:
             crlf()
         
         new_text = ""
@@ -1492,14 +1545,22 @@ def write_mml(data):
             percussion_marked = percussion_end_state
             new_text += '"'
         
+        #write volume/octave macros if not a volume/octave command
+        if loc in volume_locs:
+            if "volume" not in cmdinfo.type and "expression" not in cmdinfo.type:
+                new_text += write_volume_macro(*volume_locs[loc], loc=loc)
+        if loc in octave_locs:
+            if "octave" not in cmdinfo.type:
+                new_text += write_octave_macro(*octave_locs[loc], loc=loc)
+        
         #write command to mml
         if loc in append_before_items:
             new_text += append_before_items[loc]
         if loc in replace_items:
             new_text += replace_items[loc]
-        else:
+        elif loc not in redundant_items or not redundant_items[loc]:
             new_text += cmdinfo.write(cmd, loc)
-        
+
         #advance
         ifprint(f"{loc:04X}: writing {' '.join([f'{b:02X}' for b in cmd])} as {new_text}", DEBUG_WRITE_VERBOSE)
         line += new_text
@@ -1593,6 +1654,7 @@ if __name__ == "__main__":
     percussion_states = {}
     percussion_defs = {}
     replace_items = {}
+    redundant_items = {}
     
     if spc_mode and format.percussion_table_loc is not None:
         percussion_data = bin[format.percussion_table_loc:format.percussion_table_loc+0x24]
