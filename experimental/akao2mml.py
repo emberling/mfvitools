@@ -1,4 +1,4 @@
-VERSION = "alpha 0.06.03"
+VERSION = "alpha 0.06.04"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -10,6 +10,7 @@ DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
 DEBUG_JUMP_VERBOSE = False
 DEBUG_STATE_VERBOSE = False
+DEBUG_PERC_VERBOSE = False
 DEBUG_WRITE_VERBOSE = False
 
 import sys, itertools, copy
@@ -42,6 +43,7 @@ class Code:
         self.params = params
         self.collapse_empty = collapse_empty
         self.dest = None
+        self.percid = None
         self.kwargs = kwargs
         
     def write(self, cmd, _):
@@ -65,14 +67,15 @@ class Code:
             return None
             
 class Note(Code):
-    def __init__(self, note, dur):
+    def __init__(self, noteid, dur):
         self.type = "note"
         
         self.dur = dur
-        self.note = note
+        self.note = format.note_table[noteid]
+        self.percid = noteid if self.note != "r" else None
         
         self.length = 1
-        self.symbol = note + dur
+        self.symbol = self.note + dur
         self.params = []
         self.dest = None
       
@@ -298,6 +301,10 @@ class ExpressionCode(VolumeCode):
 class Percussion(Code):
     def __init__(self, length, on, **kwargs):
         Code.__init__(self, length, "{P" + ("+" if on else "-") + "}", **kwargs)
+        if on:
+            self.type = "PercOn"
+        else:
+            self.type = "PercOff"
         
 class NoteTable(Code):
     def __init__(self, length, symbol, **kwargs):
@@ -985,7 +992,7 @@ def register_notes():
         for i, dur in enumerate(format.duration_table):
             for j, note in enumerate(format.note_table):
                 if dur:
-                    format.bytecode[i * multiplier + j + format.first_note_id] = Note(note, dur)
+                    format.bytecode[i * multiplier + j + format.first_note_id] = Note(j, dur)
                 else:
                     pass #TODO implement custom duration notes for suzuki
     else:
@@ -995,7 +1002,7 @@ def register_notes():
                 if format.dynamic_note_duration == True: #kawakami
                     format.bytecode[i * multiplier + j + format.first_note_id] = KawakamiNote(note, j)
                 else: #akao
-                    format.bytecode[i * multiplier + j + format.first_note_id] = Note(note, dur)
+                    format.bytecode[i * multiplier + j + format.first_note_id] = Note(i, dur)
                 
 # # # # # HEADER # # # # #
 
@@ -1166,10 +1173,14 @@ def trace_segments(data, segs):
         loop_stack = []
         octave = 5 if format.low_octave_notes else None
         octave_rel = 0
+        prev_octave = None
         volume = None
         expression = 0x7F
         program = None
         jump_counter = 1
+        percussion = False
+        percussion_marked = False
+        percussion_state = None
         dur_table = []
         if format.dynamic_note_duration:
             dur_table = [d for d in format.duration_table if isinstance(d, int)]
@@ -1246,6 +1257,42 @@ def trace_segments(data, segs):
                     elif cmdinfo.length == 1:
                         dynamic_note_durations[loc] = dur_table[cmdinfo.idx]
                 
+            #handle percussion
+            if "PercOn" in cmdinfo.type:
+                percussion = True
+                percussion_state = None
+                ifprint(f"{loc:04X}: PercOn - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
+            elif "PercOff" in cmdinfo.type:
+                percussion = False
+                percussion_state = None
+                if percussion_marked:
+                    percussion_ends.add(loc)
+                ifprint(f"{loc:04X}: PercOff - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
+            if percussion:
+                if loc in percussion_states:
+                    ops = percussion_states[loc]
+                else:
+                    ops = None
+                ifprint(f"{loc:04X}: {cmdinfo.symbol} - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} ops {ops} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
+                if cmdinfo.percid is not None:
+                    ifprint("Is a percussion note", DEBUG_PERC_VERBOSE)
+                    if not percussion_marked:
+                        ifprint("Mark inactive, activating", DEBUG_PERC_VERBOSE)
+                        percussion_starts.add(loc)
+                        percussion_marked = True
+                    if percussion_state is None:
+                        ifprint("State inactive, resetting", DEBUG_PERC_VERBOSE)
+                        percussion_resets.add(loc)
+                    elif loc in percussion_states and percussion_state is not None and percussion_states[loc] != percussion_state:
+                        ifprint("State ambiguous, resetting", DEBUG_PERC_VERBOSE)
+                        percussion_resets.add(loc)
+                    percussion_states[loc] = percussion_state
+                    percussion_state = cmdinfo.percid
+                else:
+                    if percussion_marked:
+                        ifprint("Not a percussion note, mark active, deactivating", DEBUG_PERC_VERBOSE)
+                        percussion_ends.add(loc)
+                        percussion_marked = False
             #handle loops
             do_jump = False
             if cmd[0] in format.loop_start:
@@ -1342,9 +1389,23 @@ def write_mml(data):
             n -= 1
         line = ""
         
+    def ensure_percussion():
+        nonlocal percussion_marked, new_text
+        if not percussion_marked:
+            new_text += '"'
+            percussion_marked = True
+            
+    def ensure_no_percussion():
+        nonlocal percussion_marked, new_text
+        if percussion_marked:
+            new_text += '"'
+            percussion_marked = False
+            
     mml = []
     line = ""
     loc = 0 + header_length
+    percussion_marked = False
+    percussion_end_state = False
     while loc < len(data):
         #text maintenance
         if len(line.rpartition('\n')) >= 70:
@@ -1352,18 +1413,38 @@ def write_mml(data):
         
         new_text = ""
         
+        if loc in percussion_ends:
+            new_text += '"'
+            percussion_marked = False
+            percussion_end_state = False
+            
         #check for targets at this location
         if loc in tracks:
+            ensure_no_percussion()
             crlf(2)
             new_text += f"{{{tracks[loc]}}}"
             crlf()
         if loc in jumps:
+            ensure_no_percussion()
             new_text += f"${jumps[loc]}"
             
         #read control byte
         cmd = data[loc]
         cmdinfo = format.bytecode[cmd]
         cmd = data[loc:loc+cmdinfo.length]
+        
+        #percussion
+        if loc in percussion_starts:
+            new_text += '"'
+            percussion_marked = True
+            percussion_end_state = True
+        if loc in percussion_resets:
+            ensure_percussion()
+            new_text += " !!!o "
+        
+        if percussion_marked != percussion_end_state:
+            percussion_marked = percussion_end_state
+            new_text += '"'
         
         #write command to mml
         if loc in append_before_items:
@@ -1455,6 +1536,10 @@ if __name__ == "__main__":
     dynamic_note_durations = {}
     note_tables = {}
     append_before_items = {}
+    percussion_starts = set()
+    percussion_ends = set()
+    percussion_resets = set()
+    percussion_states = {}
     replace_items = {}
     
     bin = bin[origin:]
