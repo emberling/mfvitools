@@ -1,4 +1,4 @@
-VERSION = "alpha 0.8.0"
+VERSION = "alpha 0.8.1"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -57,6 +57,7 @@ class Format:
         self.note_sort_by_duration = False
         self.dynamic_note_duration = False
         self.first_note_id = 0
+        self.loops_store_octave = False
         self.zero_loops_infinite = False
         self.program_base = 0x20
         self.max_loop_stack = 4
@@ -221,21 +222,29 @@ class Jump(Code):
         self.dest = dest
         
     def write(self, cmd, loc):
-        dest = self.dest
         iterations = None
-        if dest is None:
+        try:
+            unshifted = self.dest(cmd)
+            dest = shift(unshifted)
+        except TypeError: #suzuki 1-byte loop break
             if loc in implicit_jump_targets:
                 dest = implicit_jump_targets[loc]
+            else:
+                dest = 0
             if loc in suzuki_volta_counts:
                 iterations = suzuki_volta_counts[loc]
+            else:
+                iterations = 0
                 
         try:
-            target = jumps[shift(self.dest(cmd))]
+            target = jumps[dest]
         except KeyError:
-            print(f"{loc:04X}: couldn't find jump destination {shift(self.dest(cmd)):04X} ({self.dest(cmd):04X})")
+            print(f"{loc:04X}: couldn't find jump destination {dest:04X} ({unshifted:04X})")
             target = 0
         self.params.append(Fixed(target))
-        if iterations: #suzuki 1-byte loop break
+        if self.length == 1: #suzuki 1-byte loop break
+            ifprint(f"1-byte loop break: {iterations}x -> {target}", DEBUG_LOOP_VERBOSE)
+            
             text = f"{self.symbol}{iterations},{target}"
         else:
             text = Code.write(self, cmd, loc)
@@ -953,6 +962,7 @@ formats["sd3"].tempo_mode = "suzuki"
 formats["sd3"].note_sort_by_duration = True
 formats["sd3"].note_increment_custom_duration = True
 formats["sd3"].program_base = 0x8
+formats["sd3"].loops_store_octave = True
 formats["sd3"].max_loop_stack = 10
 formats["sd3"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "r", "^"]
 formats["sd3"].duration_table = ["1", "2.", "2", "4.", "4", "8.", "6", "8", "12", "16", "24", "32", "64", None]
@@ -975,7 +985,7 @@ formats["sd3"].bytecode = {
     0xD3: Code(2, "[", params=[P(1)], collapse_empty=True, count_param=1),
     0xD4: Code(2, "[", params=[P(1)], collapse_empty=True, count_param=1),
     0xD5: Code(1, "]"),
-    0xD6: Code(1, "j"),
+    0xD6: Jump(1, "j"),
     0xD7: Code(1, "$"),
     0xD8: Code(1, "%y"),
     0xD9: Code(2, "%a", params=[P(1)]),
@@ -986,11 +996,11 @@ formats["sd3"].bytecode = {
     0xDE: ProgramCodeBySample(2, params=[P(1)]),
     0xDF: Comment(2, "NoiseClock Rel {}", params=[P(1)]),
     0xE0: VolumeCode(2, "v", params=[P(1)], volume_param=1),
-    0xE1: Comment(1, "unk"),
+    0xE1: Comment(1, "E1"), #unknown length
     0xE2: VolumeCode(2, "v", params=[P(1)], volume_param=1),
     0xE3: Comment(1, "VolRel {}", params=[P(1)]),
     0xE4: VolumeCode(3, "v", params=[P(1), P(2)], env_param=1, volume_param=2),
-    0xE5: Comment(2, "PortaMode {} {}", params=[P(1), P(2)]),
+    0xE5: Comment(3, "PortaMode {} {}", params=[P(1), P(2)]),
     0xE6: Comment(1, "PortaToggle"),
     0xE7: Code(2, "p", params=[Scaled(1, .5)]),
     0xE8: Code(3, "p", params=[P(1), Scaled(2, .5)], env_param=1),
@@ -1053,10 +1063,27 @@ formats["bs"].bytecode[0xFE] = Comment(1, "FE")
 formats["bs"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFF]
 
         # BAHAMUT LAGOON #
-formats["bl"] = Format("14", "bl", "SUZUKI / Bahamut Lagoon")
+formats["bl"] = copy.deepcopy(formats["sd3"])
+formats["bl"].sort_as = "14"
+formats["bl"].id = "bl"
+formats["bl"].display_name = "SUZUKI / Bahamut Lagoon"
 formats["bl"].scanner_loc = 0x310
 formats["bl"].scanner_data = b"\xFF\xBD\x3F\x11\x03\x8F\x00\xF6" + \
                              b"\x8F\x02\xF7\xC4\xF4\xC4\xF5\xE4"
+formats["bl"].program_map_loc = 0x5780
+formats["bl"].header_type = 6
+formats["bl"].program_base = 0x8
+formats["bl"].note_increment_custom_duration = False
+formats["bl"].bytecode[0xD2] = Comment(2, "TimerFreq {}", params=[P(1)])
+formats["bl"].bytecode[0xD3] = Comment(2, "TimerFreq Rel {}", params=[P(1)])
+formats["bl"].bytecode[0xE0] = Comment(2, "E0 {}", params=[P(1)])
+formats["bl"].bytecode[0xF6] = Comment(2, "F6 {}", params=[P(1)])
+formats["bl"].bytecode[0xFC] = Code(1, "<")
+formats["bl"].bytecode[0xFD] = Code(1, "<")
+formats["bl"].bytecode[0xFE] = Comment(1, "FE")
+formats["bl"].bytecode[0xFF] = Comment(1, "FF")
+formats["bl"].loop_start = [0xD4]
+formats["bl"].octave_up = [0xC4, 0xFC, 0xFD]
                      
         # FRONT MISSION : GUN HAZARD #
 formats["gh"] = copy.deepcopy(formats["bs"])
@@ -1073,10 +1100,20 @@ formats["gh"].bytecode[0xFE] = Code(1, ";")
 formats["gh"].end_track = [0xEC, 0xED, 0xEE, 0xEF, 0xFD, 0xFE, 0xFF]
 
         # SUPER MARIO RPG #
-formats["smrpg"] = Format("16", "smrpg", "SUZUKI / Super Mario RPG")
+formats["smrpg"] = copy.deepcopy(formats["bl"])
+formats["smrpg"].sort_as = "16"
+formats["smrpg"].id = "smrpg"
+formats["smrpg"].display_name = "SUZUKI / Super Mario RPG"
 formats["smrpg"].scanner_loc = 0x310
 formats["smrpg"].scanner_data = b"\xFF\xBD\x3F\x1A\x03\x8F\x00\xF6" + \
                                 b"\x8F\x02\xF7\xC4\xF4\xC4\xF5\xE4"
+formats["smrpg"].program_map_loc = 0x4780
+formats["smrpg"].program_base = 0xA
+formats["smrpg"].bytecode[0xFC] = Comment(4, "FC {} {} {}", params=[P(1), P(2), P(3)])
+formats["smrpg"].bytecode[0xFD] = Code(1, "<")
+formats["smrpg"].bytecode[0xFE] = Comment(1, "FE")
+formats["smrpg"].bytecode[0xFF] = Code(1, "<")
+formats["smrpg"].octave_up = [0xC4, 0xFD, 0xFF]
                        
 ## ## ## KAWAKAMI ## ## ##
 
@@ -1290,6 +1327,8 @@ def parse_header(data, loc=0):
                 if program_map_data[i] < 0xFF:
                     sample_mappings[i] = program_map_data[i]
                     program_mappings[program_map_data[i]] = i
+                    if i >= format.program_base:
+                        print(f"sample {i:02} / 0x{i:02X} <--> program {sample_mappings[i]:02X} (orig), {convert_program(sample_mappings[i]):02X} (mml)")
             
         perc_loc = loc+0x10 if format.header_type == 5 else loc
         i = perc_loc
@@ -1303,7 +1342,7 @@ def parse_header(data, loc=0):
                 perc_count += 1
                 if key:
                     if smp in sample_mappings:
-                        print(f"registering perc {smp:02X} -> {sample_mappings[smp]:02X} -> {convert_program(sample_mappings[smp]):02X}")
+                        ifprint(f"registering perc {smp:02X} -> {sample_mappings[smp]:02X} -> {convert_program(sample_mappings[smp]):02X}", DEBUG_PERC_VERBOSE)
                         register_percussion_note(convert_program(sample_mappings[smp]), key, pan//2, id=id, smp=smp)
                     else:
                         register_percussion_note(0, key, pan//2, id=id, smp=smp)
@@ -1447,7 +1486,8 @@ def trace_segments(data, segs):
         volume = None
         expression = 0x7F
         program = None
-        program_changed = False
+        force_octave_set = False
+        force_volume_set = False
         block_volume_cmds = []
         block_octave_cmds = []
         block_octave_rel = {}
@@ -1527,7 +1567,8 @@ def trace_segments(data, segs):
             if cmdinfo.type == "program":
                 if cmdinfo.get(cmd) != program:
                     program = cmdinfo.get(cmd)
-                    program_changed = True
+                    force_octave_set = True
+                    force_volume_set = True
                 ifprint(f"{loc:04X}: set program to {program:02X}", DEBUG_STATE_VERBOSE)
                 if loc in program_locs:
                     if program_locs[loc][1] != octave:
@@ -1572,10 +1613,11 @@ def trace_segments(data, segs):
 
             #handle static block on active block start
             if "note" in cmdinfo.type:
-                if program_changed:
+                if force_volume_set:
                     if not volume_set:
                         volume_set = True
                         block_volume_cmds.append((loc, volume))
+                if force_octave_set:
                     if not octave_set and not percussion:
                         octave_set = True
                         block_octave_cmds.append(loc)
@@ -1597,7 +1639,8 @@ def trace_segments(data, segs):
                 block_octave_rel = {}
                 volume_set = False
                 octave_set = False
-                program_changed = False
+                force_octave_set = False
+                force_volume_set = False
                 
             #handle weird kawakami duration stuff
             if format.dynamic_note_duration:
@@ -1619,7 +1662,9 @@ def trace_segments(data, segs):
             if cmd[0] in format.loop_start:
                 startloc, iterations, counter = [loc + cmdinfo.length, cmdinfo.get(cmd, "count_param"), 1]
                 rel_octave_set(0)
-                loop_stack.append( [startloc, iterations, counter] )
+                loop_stack.append( [startloc, iterations, counter, octave] )
+                if format.loops_store_octave:
+                    force_octave_set = True
                 ifprint(f"{loc:04X}: loop started with {iterations} iterations", DEBUG_LOOP_VERBOSE)
                 if len(loop_stack) > format.max_loop_stack:
                     print("warning: loop stack above {format.max_loop_stack}, behavior may become inaccurate")
@@ -1634,7 +1679,7 @@ def trace_segments(data, segs):
                     finalize(append_before=append_before)
                     break
                 else:
-                    startloc, iterations, counter = loop_stack[-1]
+                    startloc, iterations, counter, loop_oct = loop_stack[-1]
                     rel_octave_set(0)
                     loop_ends[startloc] = loc + cmdinfo.length
                     if iterations == 0 and format.zero_loops_infinite:
@@ -1650,12 +1695,14 @@ def trace_segments(data, segs):
                         ifprint(f"looping back to {startloc:04X} for {counter}rd iteration", DEBUG_LOOP_VERBOSE)
                         finalize(append_before=append_before)
                         loc = startloc
-                        loop_stack[-1] = [startloc, iterations, counter]
+                        loop_stack[-1][2] = counter
+                        if format.loops_store_octave:
+                            octave = loop_oct
                         continue
             elif cmd[0] in format.loop_break or cmd[0] in format.volta_jump:
                 rel_octave_set(0)
                 if loop_stack:
-                    startloc, iterations, counter = loop_stack[-1]
+                    startloc, iterations, counter, loop_oct = loop_stack[-1]
                     if cmdinfo.length == 1:
                         volta_count = iterations
                         suzuki_volta_counts[loc] = volta_count
@@ -1679,7 +1726,7 @@ def trace_segments(data, segs):
                     implicit_jump_targets[loc] = next_loc
                 else:
                     next_loc = shift(cmdinfo.dest(cmd))
-                ifprint(f"Found hard jump to {next_loc:04X} ({cmdinfo.dest(cmd):04X})", DEBUG_JUMP_VERBOSE)
+                ifprint(f"Found hard jump to {next_loc:04X} ({next_loc:04X})", DEBUG_JUMP_VERBOSE)
                 add_jump(next_loc, cmd[0] in format.volta_jump)
                 rel_octave_set(0)
                 if cmd[0] in format.hard_jump:
