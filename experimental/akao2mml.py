@@ -1,4 +1,4 @@
-VERSION = "alpha 0.7.0"
+VERSION = "alpha 0.8.0"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -48,10 +48,12 @@ class Format:
         #defaults
         self.sequence_relative = True
         self.percussion_table_loc = None
+        self.program_map_loc = None
         self.use_expression = False
         self.tempo_scale = 1
-        self.tempo_offset = None
+        self.tempo_mode = "simple"
         self.low_octave_notes = []
+        self.note_increment_custom_duration = False
         self.note_sort_by_duration = False
         self.dynamic_note_duration = False
         self.first_note_id = 0
@@ -60,17 +62,21 @@ class Format:
         self.max_loop_stack = 4
         
 class PercussionDef:
-    def __init__(self, prg, key, pan):
+    def __init__(self, prg, key, pan, smp=None):
         self.prg = prg
         self.key = key
         self.pan = pan
+        if smp is None:
+            self.prg_raw = prg
+        else:
+            self.prg_raw = smp
         
     def write(self):
         octave = self.key // 12
         note = note_symbol_by_id[self.key % 12]
 
         if self.prg >= format.program_base:
-            prgid = self.prg - format.program_base
+            prgid = self.prg - 0x20
             prgtext = f"|{prgid:1X}"
             if self.prg not in sample_defs:
                 sample_defs[self.prg] = f"#WAVE 0x{self.prg:02X} 0x00"
@@ -131,11 +137,18 @@ class Note(Code):
         self.note = format.note_table[noteid]
         self.percid = noteid if noteid < 12 else None
         
-        self.length = 1
-        self.symbol = self.note + dur
-        self.params = []
+        self.length = 1 if dur else 2
+        self.symbol = self.note + dur if dur else self.note + '&'
+        self.params = [] if dur else( [Increment(1)] if format.note_increment_custom_duration else [P(1)])
         self.dest = None
       
+    def write(self, cmd, _):
+        if self.params:
+            dur = self.params[0](cmd)
+            return specify_note_duration(self.note, dur)
+        else:
+            return Code.write(self, cmd, _)
+            
 class KawakamiNote(Note):
     def __init__(self, note, idx):
         self.type = "note"
@@ -208,13 +221,24 @@ class Jump(Code):
         self.dest = dest
         
     def write(self, cmd, loc):
+        dest = self.dest
+        iterations = None
+        if dest is None:
+            if loc in implicit_jump_targets:
+                dest = implicit_jump_targets[loc]
+            if loc in suzuki_volta_counts:
+                iterations = suzuki_volta_counts[loc]
+                
         try:
             target = jumps[shift(self.dest(cmd))]
         except KeyError:
             print(f"{loc:04X}: couldn't find jump destination {shift(self.dest(cmd)):04X} ({self.dest(cmd):04X})")
             target = 0
         self.params.append(Fixed(target))
-        text = Code.write(self, cmd, loc)
+        if iterations: #suzuki 1-byte loop break
+            text = f"{self.symbol}{iterations},{target}"
+        else:
+            text = Code.write(self, cmd, loc)
         self.params.pop()
         return text
         
@@ -255,14 +279,52 @@ class ProgramCode(Code):
                 program, octave, volume = program_locs[loc]
             text += ' '
         return text
-        
+            
     def get(self, cmd, keyword=''):
         progval = self.params[0](cmd)
-        if progval >= format.program_base:
-            return progval - format.program_base + 0x20
+        if sample_mappings: #suzuki
+            return progval
+        elif progval >= format.program_base:
+            return progval - format.program_base + 0x20 #for ff4
         else:
             return progval
 
+class ProgramCodeBySample(ProgramCode):
+    def write(self, cmd, loc):
+        smpval = self.params[0](cmd)
+        progval = sample_mappings[smpval]
+        #print(f"read sample {smpval:02X} -> is mapped to program {progval:02X}")
+        prog = None
+        macro_id = f"{progval}@"
+        if progval >= format.program_base:
+            prog = convert_program(progval) - 0x20
+            text = f"|{prog:1X}"
+            macro_id = f"{prog:1X}"
+        elif progval >= 10:
+            text = f"@0x{progval:02X}"
+        else:
+            text = f"@{progval}"
+            
+        if progval not in program_defs:
+            if prog is not None:
+                sample_defs[prog+0x20] = f"#WAVE 0x{prog+0x20:02X} 0x00"
+                program_defs[prog+0x20] = f"#def {prog:1X}i= |{prog:1X}"
+                octave_defs[prog+0x20] = f"#def {prog:1X}o= o5"
+                volume_defs[prog+0x20] = f"#def {prog:1X}v=   v100" + "\n" + \
+                                         f"#def {prog:1X}f= v1,100"
+            else:
+                program_defs[progval] = f"#def {progval}@i= @{progval}"
+                octave_defs[progval] = f"#def {progval}@o= o5"
+                volume_defs[progval] = f"#def {progval}@v=   v100" + "\n" + \
+                                       f"#def {progval}@f= v1,100"
+                
+        if CONFIG_USE_PROGRAM_MACROS:
+            text = f"\n'{macro_id}i'"
+            if loc in program_locs:
+                program, octave, volume = program_locs[loc]
+            text += ' '
+        return text
+            
 class OctaveCode(Code):
     def __init__(self, length, symbol, **kwargs):
         Code.__init__(self, length, symbol, **kwargs)
@@ -288,6 +350,10 @@ class OctaveCode(Code):
 def write_octave_macro(progval, octave, loc=0):    
     if octave is None:
         return ""
+    if progval in sample_mappings: #suzuki
+        progval = convert_program(sample_mappings[progval])
+    elif sample_mappings:
+        print(f"why the hell are you writing about program {progval:02X}")
     if progval is None:
         macro_id = "??"
         print(f"warning: unknown program in octave change at {loc:04X}")
@@ -335,6 +401,10 @@ def write_volume_macro(progval, volume, env=None, loc=0):
     if volume is None:
         return ""
     env_text = "" if env is None else f"{env},"
+    if progval in sample_mappings: #suzuki
+        progval = convert_program(sample_mappings[progval])
+    elif sample_mappings:
+        print(f"why the hell are you writing about program {progval:02X}")
     if progval is None:
         macro_id = "??"
         print(f"warning: unknown program in volume change at {loc:04X}")
@@ -418,9 +488,12 @@ def Scaled(pos, scale):
     
 def TempoScale(pos):
     def readp(cmd):
-        tempo = int(cmd[pos] * format.tempo_scale)
-        if format.tempo_offset:
-            tempo += (int(tempo * format.tempo_offset) >> 8)
+        if format.tempo_mode == "suzuki":
+            tempo = int(60000000 / (125 * cmd[pos] * 48))
+        else:
+            tempo = int(cmd[pos] * format.tempo_scale)
+            if format.tempo_mode == "fm":
+                tempo += (int(tempo * 0x14) >> 8)
         return min(0xFF, tempo)
     return readp
     
@@ -477,24 +550,6 @@ def Fixed(val):
         return val
     return readp
     
-    # 0: ("ff4", "AKAO1 / Final Fantasy IV"),
-    # 1: ("rs1", "AKAO2 / Romancing SaGa"),
-    # 2: ("ffmq", "AKAO3 / Final Fantasy Mystic Quest"),
-    # 3: ("ff5", "AKAO3 / Final Fantasy V, Hanjuku Hero"),
-    # 4: ("sd2", "AKAO3 / Secret of Mana"),
-    # 5: ("rs2", "AKAO4 / Romancing SaGa 2"),
-    # 6: ("lal", "AKAO4 / Live-a-Live"),
-    # 7: ("ff6", "AKAO4 / Final Fantasy VI"),
-    # 8: ("fm", "AKAO4 / Front Mission"),
-    # 9: ("ct", "AKAO4 / Chrono Trigger"),
-    # 10: ("sd3", "SUZUKI / Trials of Mana"),
-    # 11: ("rs3", "AKAO4 / Romancing SaGa 3"),
-    # 12: ("bs", "AKAO4 / DynamiTracer, Treasure Conflix, Koi ha Balance, Radical Dreamers"),
-    # 13: ("bl", "SUZUKI / Bahamut Lagoon"),
-    # 14: ("fmgh", "AKAO4 / Front Mission: Gun Hazard"),
-    # 15: ("smrpg", "SUZUKI / Super Mario RPG")
-    # 16: ("rnh", "KAWAKAMI / Rudra no Hihou (Treasure of the Rudras)")
-    
 #### format definitions ####
 
 general_note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b"]
@@ -502,6 +557,9 @@ note_symbol_by_id = {i: n for i, n in enumerate(general_note_table)}
 
 formats = {}
 
+## ## ## AKAO1 ## ## ##
+
+        # FINAL FANTASY IV #
 formats["ff4"] = Format("01", "ff4", "AKAO1 / Final Fantasy IV")
 formats["ff4"].scanner_loc = 0x900
 formats["ff4"].scanner_data = b"\x20\xC0\xCD\xCF\xBD\xE8\x00\x5D" + \
@@ -569,6 +627,9 @@ formats["ff4"].hard_jump = [0xF4]
 formats["ff4"].volta_jump = [0xF5]
 formats["ff4"].program_base = 0x40
 
+## ## ## AKAO2 ## ## ##
+
+        # ROMANCING SAGA #
 formats["rs1"] = Format("02", "rs1", "AKAO2 / Romancing SaGa")
 formats["rs1"].scanner_loc = 0x900
 formats["rs1"].scanner_data = b"\x20\xC0\xCD\xfF\xBD\xE8\x00\x5D" + \
@@ -636,6 +697,9 @@ formats["rs1"].hard_jump = [0xF1]
 formats["rs1"].volta_jump = [0xF0]
 formats["rs1"].conditional_jump = [0xF6]
 
+## ## ## AKAO3 ## ## ##
+
+        # FINAL FANTASY MYSTIC QUEST #
 formats["ffmq"] = Format("03", "ffmq", "AKAO3 / Final Fantasy Mystic Quest")
 formats["ffmq"].scanner_loc = 0x300
 formats["ffmq"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
@@ -702,6 +766,7 @@ formats["ffmq"].hard_jump = [0xFA]
 formats["ffmq"].volta_jump = [0xF9]
 formats["ffmq"].conditional_jump = [0xFB]
 
+        # FINAL FANTASY V #
 formats["ff5"] = copy.deepcopy(formats["ffmq"])
 formats["ff5"].sort_as = "04"
 formats["ff5"].id = "ff5"
@@ -711,10 +776,11 @@ formats["ff5"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
                               b"\xAF\xC8\xF0\xD0\xFB\x1A\xEB\xE8"
 formats["ff5"].header_type = 3
 
+        # SEIKEN DENSETSU 2 #
 formats["sd2"] = copy.deepcopy(formats["ff5"])
 formats["sd2"].sort_as = "05"
 formats["sd2"].id = "sd2"
-formats["sd2"].display_name = "AKAO3 / Secret of Mana"
+formats["sd2"].display_name = "AKAO3 / Seiken Densetsu 2 (Secret of Mana)"
 formats["sd2"].scanner_loc = 0x300
 formats["sd2"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
                               b"\xAF\xC8\xF0\xD0\xFB\xE8\x00\x8D"
@@ -723,6 +789,9 @@ formats["sd2"].bytecode[0xFC] = Comment(1, "LoopRestart")
 formats["sd2"].bytecode[0xFD] = Comment(2, "IgnoreMVol prg={}", params=[P(1)])
 formats["sd2"].end_track = [0xF2, 0xFE, 0xFF]
 
+## ## ## AKAO4 ## ## ##
+
+        # ROMANCING SAGA 2 #
 formats["rs2"] = Format("06", "rs2", "AKAO4 / Romancing SaGa 2")
 formats["rs2"].scanner_loc = 0x310
 formats["rs2"].scanner_data = b"\x00\x8D\x0C\x3F\x5C\x06\x8D\x1C" + \
@@ -770,8 +839,8 @@ formats["rs2"].bytecode = {
     0xE6: Code(1, "%g1"),
     0xE7: Code(1, "%g0"),
     0xE8: Code(2, "&", params=[P(1)]),
-    0xE9: Code(2, "%s0,", params=[P(1)]),
-    0xEA: Code(2, "%s1,", params=[P(1)]),
+    0xE9: Code(2, "s0,", params=[P(1)]),
+    0xEA: Code(2, "s1,", params=[P(1)]),
     0xEB: Code(1, ";"),
     0xEC: Code(1, ";"),
     0xED: Code(1, ";"),
@@ -802,6 +871,7 @@ formats["rs2"].octave_down = [0xD8]
 formats["rs2"].hard_jump = [0xF7]
 formats["rs2"].loop_break = [0xF6]
 
+        # LIVE A LIVE #
 formats["lal"] = copy.deepcopy(formats["rs2"])
 formats["lal"].sort_as = "07"
 formats["lal"].id = "lal"
@@ -811,7 +881,8 @@ formats["lal"].scanner_data = b"\x00\x8D\x2C\x3F\x14\x06\x8D\x3C" + \
 formats["lal"].bytecode[0xFB] = Jump(3, ":", dest=Multi(1,2))
 formats["lal"].conditional_jump = [0xFB]
 formats["lal"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFC, 0xFD, 0xFE, 0xFF]
-                              
+                  
+        # FINAL FANTASY VI #
 formats["ff6"] = copy.deepcopy(formats["lal"])
 formats["ff6"].sort_as = "08"
 formats["ff6"].id = "ff6"
@@ -837,6 +908,7 @@ formats["ff6"].hard_jump = [0xF6]
 formats["ff6"].loop_break = [0xF5]
 formats["ff6"].conditional_jump = [0xFC]
 
+        # FRONT MISSION #
 formats["fm"] = copy.deepcopy(formats["ff6"])
 formats["fm"].sort_as = "09"
 formats["fm"].id = "fm"
@@ -847,7 +919,7 @@ formats["fm"].sequence_loc = 0x2100
 formats["fm"].percussion_table_loc = 0xF220
 formats["fm"].use_expression = True
 formats["fm"].tempo_scale = (60000 / 252) / 256
-formats["fm"].tempo_offset = 0x14
+formats["fm"].tempo_mode = "fm"
 formats["fm"].bytecode[0xF9] = Comment(2, "F9 {}", params=[P(1)])
 formats["fm"].bytecode[0xFA] = Jump(3, ":", dest=Multi(1,2))
 formats["fm"].bytecode[0xFB] = Percussion(1, True)
@@ -856,6 +928,7 @@ formats["fm"].bytecode[0xFD] = ExpressionCode(2, "{e}", params=[P(1)], expressio
 formats["fm"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFE, 0xFF]
 formats["fm"].conditional_jump = [0xFA]
 
+        # CHRONO TRIGGER #
 formats["ct"] = copy.deepcopy(formats["fm"])
 formats["ct"].sort_as = "10"
 formats["ct"].id = "ct"
@@ -864,6 +937,95 @@ formats["ct"].scanner_data = b"\xBB\x8D\x2C\x3F\xA3\x07\x8D\x3C" + \
                              b"\x3F\xA3\x07\xCD\x40\xD5\x6E\xF1"
 formats["ct"].bytecode[0xF9] = Comment(2, "CpuSetValue {}", params=[P(1)])
 
+## ## ## SUZUKI ## ## ##
+
+        # SEIKEN DENSETSU 3 #
+formats["sd3"] = Format("11", "sd3", "SUZUKI / Seiken Densetsu 3 (Trials of Mana)")
+formats["sd3"].scanner_loc = 0x310
+formats["sd3"].scanner_data = b"\xFF\xBD\x3F\x0A\x03\x8F\x00\xF6" + \
+                              b"\x8F\x02\xF7\xC4\xF4\xC4\xF5\xE4"
+formats["sd3"].sequence_loc = 0x2100
+formats["sd3"].program_map_loc = 0x5F80
+formats["sd3"].header_type = 5
+formats["sd3"].sequence_relative = False
+formats["sd3"].tempo_scale = 1
+formats["sd3"].tempo_mode = "suzuki"
+formats["sd3"].note_sort_by_duration = True
+formats["sd3"].note_increment_custom_duration = True
+formats["sd3"].program_base = 0x8
+formats["sd3"].max_loop_stack = 10
+formats["sd3"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "r", "^"]
+formats["sd3"].duration_table = ["1", "2.", "2", "4.", "4", "8.", "6", "8", "12", "16", "24", "32", "64", None]
+formats["sd3"].bytecode = {
+    0xC4: Code(1, "<"),
+    0xC5: Code(1, ">"),
+    0xC6: OctaveCode(2, "o", params=[P(1)], octave_param=1),
+    0xC7: Comment(1, "nop"),
+    0xC8: Code(2, "%c", params=[P(1)]),
+    0xC9: Code(1, "%n1"),
+    0xCA: Code(1, "%n0"),
+    0xCB: Code(1, "%p1"),
+    0xCC: Code(1, "%p0"),
+    0xCD: Code(2, "s0", params=[P(1)]),
+    0xCE: Code(2, "s1", params=[P(1)]),
+    0xCF: Code(2, "k", params=[Signed(1)]),
+    0xD0: Code(1, ";"),
+    0xD1: Code(2, "t", params=[TempoScale(1)]),
+    0xD2: Code(2, "[", params=[P(1)], collapse_empty=True, count_param=1),
+    0xD3: Code(2, "[", params=[P(1)], collapse_empty=True, count_param=1),
+    0xD4: Code(2, "[", params=[P(1)], collapse_empty=True, count_param=1),
+    0xD5: Code(1, "]"),
+    0xD6: Code(1, "j"),
+    0xD7: Code(1, "$"),
+    0xD8: Code(1, "%y"),
+    0xD9: Code(2, "%a", params=[P(1)]),
+    0xDA: Code(2, "%d", params=[P(1)]),
+    0xDB: Code(2, "%s", params=[P(1)]),
+    0xDC: Code(2, "%r", params=[P(1)]),
+    0xDD: Comment(2, "Duration {}%", params=[P(1)]),
+    0xDE: ProgramCodeBySample(2, params=[P(1)]),
+    0xDF: Comment(2, "NoiseClock Rel {}", params=[P(1)]),
+    0xE0: VolumeCode(2, "v", params=[P(1)], volume_param=1),
+    0xE1: Comment(1, "unk"),
+    0xE2: VolumeCode(2, "v", params=[P(1)], volume_param=1),
+    0xE3: Comment(1, "VolRel {}", params=[P(1)]),
+    0xE4: VolumeCode(3, "v", params=[P(1), P(2)], env_param=1, volume_param=2),
+    0xE5: Comment(2, "PortaMode {} {}", params=[P(1), P(2)]),
+    0xE6: Comment(1, "PortaToggle"),
+    0xE7: Code(2, "p", params=[Scaled(1, .5)]),
+    0xE8: Code(3, "p", params=[P(1), Scaled(2, .5)], env_param=1),
+    0xE9: Comment(3, "TODO PanLFO rate={} depth={}", params=[P(1), P(2)]),
+    0xEA: Comment(1, "PanLFOReset"),
+    0xEB: Code(1, "p"),
+    0xEC: Code(2, "%k", params=[P(1)]),
+    0xED: Code(2, "m", params=[P(1)]),
+    0xEE: Percussion(1, True),
+    0xEF: Percussion(1, False),
+    0xF0: Code(3, "m0,", params=[P(1), P(2)]),
+    0xF1: Code(4, "m", params=[P(1), P(2), P(3)]),
+    0xF2: Comment(2, "TempoRel {}", params=[P(1)]),
+    0xF3: Code(1, "m"),
+    0xF4: Code(3, "v0,", params=[P(1), P(2)]),
+    0xF5: Code(4, "v", params=[P(1), P(2), P(3)]),
+    0xF6: Code(1, "<"),
+    0xF7: Code(1, "v"),
+    0xF8: Code(1, "%l1"),
+    0xF9: Code(1, "%l0"),
+    0xFA: Code(1, "%e1"),
+    0xFB: Code(1, "%e0"),
+    0xFC: Comment(2, "PlaySfxLo {}", params=[P(1)]),
+    0xFD: Comment(2, "PlaySfxHi {}", params=[P(1)]),
+    0xFE: Code(1, "<"),
+    0xFF: Code(1, "<")
+    }
+formats["sd3"].loop_start = [0xD2, 0xD3, 0xD4]
+formats["sd3"].loop_end = [0xD5]
+formats["sd3"].end_track = [0xD0]
+formats["sd3"].octave_up = [0xC4, 0xF6, 0xFE, 0xFF]
+formats["sd3"].octave_down = [0xC5]
+formats["sd3"].loop_break = [0xD6]
+        
+        # ROMANCING SAGA 3 #
 formats["rs3"] = copy.deepcopy(formats["ct"])
 formats["rs3"].sort_as = "12"
 formats["rs3"].id = "ct"
@@ -872,12 +1034,13 @@ formats["rs3"].scanner_data = b"\xBC\x8D\x2C\x3F\x97\x07\x8D\x3C" + \
                               b"\x3F\x97\x07\xCD\x40\xD5\x68\xF1"
 formats["rs3"].sequence_loc = 0x2300
 formats["rs3"].tempo_scale = 1
-formats["rs3"].tempo_offset = None
+formats["rs3"].tempo_mode = "simple"
 formats["rs3"].bytecode[0xF4] = ExpressionCode(2, "{e}", params=[P(1)], expression_param=1)
 formats["rs3"].bytecode[0xF7] = Code(2, "%b0,", params=[P(1)])
 formats["rs3"].bytecode[0xF8] = Code(2, "%f0,", params=[P(1)])
 formats["rs3"].bytecode[0xFD] = Comment(2, "PlaySfx {}", params=[P(1)])
 
+        # BANDAI SATELLAVIEW #
 formats["bs"] = copy.deepcopy(formats["rs3"])
 formats["bs"].sort_as = "13"
 formats["bs"].id = "ct"
@@ -889,6 +1052,13 @@ formats["bs"].bytecode[0xFD] = Comment(2, "FD {}", params=[P(1)])
 formats["bs"].bytecode[0xFE] = Comment(1, "FE")
 formats["bs"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFF]
 
+        # BAHAMUT LAGOON #
+formats["bl"] = Format("14", "bl", "SUZUKI / Bahamut Lagoon")
+formats["bl"].scanner_loc = 0x310
+formats["bl"].scanner_data = b"\xFF\xBD\x3F\x11\x03\x8F\x00\xF6" + \
+                             b"\x8F\x02\xF7\xC4\xF4\xC4\xF5\xE4"
+                     
+        # FRONT MISSION : GUN HAZARD #
 formats["gh"] = copy.deepcopy(formats["bs"])
 formats["gh"].sort_as = "15"
 formats["gh"].id = "gh"
@@ -896,13 +1066,22 @@ formats["gh"].display_name = "AKAO4 / Front Mission: Gun Hazard"
 formats["gh"].scanner_data = b"\xC4\x8D\x2C\x3F\x40\x07\x8D\x3C" + \
                              b"\x3F\x40\x07\xCD\x40\xD5\x6E\xF8"
 formats["gh"].sequence_loc = 0x2300
-formats["fm"].percussion_table_loc = 0xF920
+formats["gh"].percussion_table_loc = 0xF920
 formats["gh"].bytecode[0xEB] = Comment(2, "EB {}", params=[P(1)])
 formats["gh"].bytecode[0xFD] = Code(1, ";")
 formats["gh"].bytecode[0xFE] = Code(1, ";")
 formats["gh"].end_track = [0xEC, 0xED, 0xEE, 0xEF, 0xFD, 0xFE, 0xFF]
 
-formats["rnh"] = Format("17", "rnh", "KAWAKAMI / Rudra no Hihou (TotR)")
+        # SUPER MARIO RPG #
+formats["smrpg"] = Format("16", "smrpg", "SUZUKI / Super Mario RPG")
+formats["smrpg"].scanner_loc = 0x310
+formats["smrpg"].scanner_data = b"\xFF\xBD\x3F\x1A\x03\x8F\x00\xF6" + \
+                                b"\x8F\x02\xF7\xC4\xF4\xC4\xF5\xE4"
+                       
+## ## ## KAWAKAMI ## ## ##
+
+        # RUDRA NO HIHOU #
+formats["rnh"] = Format("17", "rnh", "KAWAKAMI / Rudra no Hihou (Treasure of the Rudras)")
 formats["rnh"].scanner_loc = 0x300
 formats["rnh"].scanner_data = b"\x5D\x3E\xF4\xF0\xFC\xF8\xF4\x30" + \
                               b"\x03\x1F\x85\x03\x1F\x05\x03\xBA"
@@ -981,6 +1160,13 @@ def shift(loc):
         loc += 0x10000
     return loc
 
+def convert_program(src_prg):
+    #format.program_base
+    prg = src_prg
+    while prg >= 0x10:
+        prg -= 0x10
+    return prg + 0x20
+    
 def specify_note_duration(note, dur):
     target_note_table = [0xC0, 0x60, 0x40, 0x48, 0x30, 0x20, 0x24, 0x18, 0x10, 0x0C, 0x08, 0x06, 0x04, 0x03]
     key = {target_note_table[i]: formats["ff6"].duration_table[i] for i in range(len(target_note_table))}
@@ -1014,10 +1200,10 @@ def register_notes():
         multiplier = len(format.note_table)
         for i, dur in enumerate(format.duration_table):
             for j, note in enumerate(format.note_table):
-                if dur:
-                    format.bytecode[i * multiplier + j + format.first_note_id] = Note(j, dur)
-                else:
-                    pass #TODO implement custom duration notes for suzuki
+                #if dur:
+                format.bytecode[i * multiplier + j + format.first_note_id] = Note(j, dur)
+                #else:
+                #    format.bytecode[i * multiplier + j + format.first_note_id] = CustomNote(j)
     else:
         multiplier = len(format.duration_table)
         for i, note in enumerate(format.note_table):
@@ -1027,14 +1213,14 @@ def register_notes():
                 else: #akao
                     format.bytecode[i * multiplier + j + format.first_note_id] = Note(i, dur)
            
-def register_percussion_note(prg=0x2F, key=69, pan=64, symbol=None, id=None):
+def register_percussion_note(prg=0x2F, key=69, pan=64, symbol=None, id=None, smp=None):
     if symbol is None:
         if id is None:
             return
         else:
             symbol = note_symbol_by_id[id]
     
-    percussion_defs[symbol] = PercussionDef(prg, key, pan)
+    percussion_defs[symbol] = PercussionDef(prg, key, pan, smp=smp)
     ifprint(f"Defined percussion {symbol} as {percussion_defs[symbol].write()}", DEBUG_PERC_VERBOSE)
 
     
@@ -1097,6 +1283,42 @@ def parse_header(data, loc=0):
                 if key:
                     register_percussion_note(prg, key, pan, id=i)
             
+    elif format.header_type in (5, 6): ### suzuki ###
+        shift_amt = format.sequence_loc - 0x100
+        if program_map_data:
+            for i in range(0x80):
+                if program_map_data[i] < 0xFF:
+                    sample_mappings[i] = program_map_data[i]
+                    program_mappings[program_map_data[i]] = i
+            
+        perc_loc = loc+0x10 if format.header_type == 5 else loc
+        i = perc_loc
+        perc_count = 0
+        while True:
+            if data[i] == 0xFF:
+                break
+            else:
+                id, smp, key, vol, pan = data[i:i+5]
+                i += 5
+                perc_count += 1
+                if key:
+                    if smp in sample_mappings:
+                        print(f"registering perc {smp:02X} -> {sample_mappings[smp]:02X} -> {convert_program(sample_mappings[smp]):02X}")
+                        register_percussion_note(convert_program(sample_mappings[smp]), key, pan//2, id=id, smp=smp)
+                    else:
+                        register_percussion_note(0, key, pan//2, id=id, smp=smp)
+        perc_length = perc_count * 5 + 1
+        
+        track_loc = loc if format.header_type == 5 else loc+perc_length
+        for i in range(8):
+            ii = i*2
+            track_start = int.from_bytes(data[track_loc+ii:track_loc+ii+2], "little")
+            if track_start:
+                tracks[i] = track_start
+        
+        header_length = perc_length + 0x10
+                
+        
     elif format.header_type == 7: ### rnh ###
         header_length = 0x12
         if spc_mode:
@@ -1290,7 +1512,7 @@ def trace_segments(data, segs):
                     percussion_state = cmdinfo.percid
                     if note_symbol_by_id[cmdinfo.percid] not in percussion_defs:
                         register_percussion_note(id=cmdinfo.percid)
-                    perc_prg = percussion_defs[note_symbol_by_id[cmdinfo.percid]].prg
+                    perc_prg = percussion_defs[note_symbol_by_id[cmdinfo.percid]].prg_raw
                     if perc_prg != program:
                         program = perc_prg
                 else:
@@ -1402,6 +1624,8 @@ def trace_segments(data, segs):
                 if len(loop_stack) > format.max_loop_stack:
                     print("warning: loop stack above {format.max_loop_stack}, behavior may become inaccurate")
                     loop_stack.pop(0)
+                elif len(loop_stack) > 4:
+                    print("warning: loop stack is {len(loop_stack)} - unsupported by target engine. Correct manually.")
                 if iterations == 0 and format.zero_loops_infinite:
                     replace_items[loc] = "$"
             elif cmd[0] in format.loop_end:
@@ -1412,6 +1636,7 @@ def trace_segments(data, segs):
                 else:
                     startloc, iterations, counter = loop_stack[-1]
                     rel_octave_set(0)
+                    loop_ends[startloc] = loc + cmdinfo.length
                     if iterations == 0 and format.zero_loops_infinite:
                         print("ending segment via infinite loop")
                         replace_items[loc] = ";"
@@ -1431,7 +1656,11 @@ def trace_segments(data, segs):
                 rel_octave_set(0)
                 if loop_stack:
                     startloc, iterations, counter = loop_stack[-1]
-                    volta_count = cmdinfo.get(cmd, "volta_param")
+                    if cmdinfo.length == 1:
+                        volta_count = iterations
+                        suzuki_volta_counts[loc] = volta_count
+                    else:
+                        volta_count = cmdinfo.get(cmd, "volta_param")
                     #print(f"{loc:04X}: volta on {volta_count}, currently {counter}")
                     if counter >= volta_count:
                         #print(f"jumping to volta at {shift(cmdinfo.dest(cmd)):04X}")
@@ -1445,7 +1674,11 @@ def trace_segments(data, segs):
                 finalize(append_before=append_before)
                 break
             if cmd[0] in format.hard_jump or do_jump:
-                next_loc = shift(cmdinfo.dest(cmd))
+                if cmd[0] in format.loop_break and cmdinfo.length == 1: #suzuki
+                    next_loc = loop_ends[startloc]
+                    implicit_jump_targets[loc] = next_loc
+                else:
+                    next_loc = shift(cmdinfo.dest(cmd))
                 ifprint(f"Found hard jump to {next_loc:04X} ({cmdinfo.dest(cmd):04X})", DEBUG_JUMP_VERBOSE)
                 add_jump(next_loc, cmd[0] in format.volta_jump)
                 rel_octave_set(0)
@@ -1644,9 +1877,15 @@ if __name__ == "__main__":
     program_locs = {}
     octave_locs = {}
     volume_locs = {}
+    loop_ends = {}
+    implicit_jump_targets = {}
+    suzuki_volta_counts = {}
     dynamic_note_durations = {}
     note_tables = {}
     append_before_items = {}
+    program_map_data = b""
+    program_mappings = {}
+    sample_mappings = {}
     percussion_data = b""
     percussion_starts = set()
     percussion_ends = set()
@@ -1656,8 +1895,11 @@ if __name__ == "__main__":
     replace_items = {}
     redundant_items = {}
     
-    if spc_mode and format.percussion_table_loc is not None:
-        percussion_data = bin[format.percussion_table_loc:format.percussion_table_loc+0x24]
+    if spc_mode:
+        if format.percussion_table_loc is not None:
+            percussion_data = bin[format.percussion_table_loc:format.percussion_table_loc+0x24]
+        if format.program_map_loc is not None:
+            program_map_data = bin[format.program_map_loc:format.program_map_loc+0x80]
         
     bin = bin[origin:]
     tracks, shift_amount, end, header_start, header_length = parse_header(bin)
