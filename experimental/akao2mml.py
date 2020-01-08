@@ -1,4 +1,4 @@
-VERSION = "alpha 0.8.1"
+VERSION = "alpha 0.8.2"
 
 CONFIG_USE_PROGRAM_MACROS = True
 CONFIG_USE_VOLUME_MACROS = True
@@ -1419,8 +1419,8 @@ def parse_header(data, loc=0):
             v += 0x10000
         tracks_shifted[v] = k+1
         
-    print(f"tracks found: {' '.join([f'{t:04X}' for t in tracks.values()])}")
-    print(f"tracks found: {' '.join([f'{t:04X}' for t in list(tracks_shifted)])}")
+    print(f"tracks found: (raw address) {' '.join([f'{t:04X}' for t in tracks.values()])}")
+    print(f"                 (adjusted) {' '.join([f'{t:04X}' for t in list(tracks_shifted)])}")
     
     return tracks_shifted, shift_amt, end, header_start, header_length
     
@@ -1432,7 +1432,7 @@ def trace_segments(data, segs):
         nonlocal jump_counter
         if dest not in jumps:
             jumps[dest] = f"{seg_counter}{jump_counter:02}"
-            print(f"registered jump target at {dest:04X}, id {jumps[dest]}")
+            ifprint(f"registered jump target at {dest:04X}, id {jumps[dest]}", DEBUG_JUMP_VERBOSE)
             jump_counter += 1
             
             if volta_warn:
@@ -1473,6 +1473,8 @@ def trace_segments(data, segs):
     # - track and store conditional scaling values
     print(f"tracing segments. pointers are offset by {shift_amount:X}.")
     
+    flowctrl_cmds = format.loop_start + format.loop_end + format.hard_jump + format.loop_break + format.volta_jump + format.conditional_jump + [k for k, v in format.bytecode.items() if '$' in v.symbol]
+    
     segs = list(segs)
     eof = 0
     seg_counter = 0
@@ -1490,6 +1492,7 @@ def trace_segments(data, segs):
         force_volume_set = False
         block_volume_cmds = []
         block_octave_cmds = []
+        block_flowctrl_cmds = []
         block_octave_rel = {}
         volume_set = False
         octave_set = False
@@ -1567,8 +1570,8 @@ def trace_segments(data, segs):
             if cmdinfo.type == "program":
                 if cmdinfo.get(cmd) != program:
                     program = cmdinfo.get(cmd)
-                    force_octave_set = True
-                    force_volume_set = True
+                    force_octave_set = len(block_flowctrl_cmds)
+                    force_volume_set = len(block_flowctrl_cmds)
                 ifprint(f"{loc:04X}: set program to {program:02X}", DEBUG_STATE_VERBOSE)
                 if loc in program_locs:
                     if program_locs[loc][1] != octave:
@@ -1611,21 +1614,30 @@ def trace_segments(data, segs):
                 octave -= 1
                 #print(f"{loc:04X}: lower octave to {octave}")
 
+            if cmd[0] in flowctrl_cmds:
+                block_flowctrl_cmds.append(loc)
+                
             #handle static block on active block start
-            if "note" in cmdinfo.type:
-                if force_volume_set:
+            if "note" in cmdinfo.type and 'r' not in cmdinfo.symbol:
+                if force_volume_set is not False:
                     if not volume_set:
                         volume_set = True
-                        block_volume_cmds.append((loc, volume))
-                if force_octave_set:
+                        try:
+                            block_volume_cmds.append((block_flowctrl_cmds[force_volume_set], volume))
+                        except IndexError:
+                            block_volume_cmds.append((loc, volume))
+                if force_octave_set is not False:
                     if not octave_set and not percussion:
                         octave_set = True
-                        block_octave_cmds.append(loc)
+                        try:
+                            block_octave_cmds.append(block_flowctrl_cmds[force_octave_set])
+                        except IndexError:
+                            block_octave_cmds.append(loc)
                 for vloc, vol in block_volume_cmds:
                     volume_locs[vloc] = program, vol
                 for oloc in block_octave_cmds:
                     octave_locs[oloc] = program, octave
-                #handle </> redundancy
+                #handle alligator redundancy
                 for roloc, _ in block_octave_rel.items():
                     if octave_set:
                         if roloc not in redundant_items:
@@ -1634,6 +1646,7 @@ def trace_segments(data, segs):
                         redundant_items[roloc] = False
                         
                 #reset static-block counters
+                block_flowctrl_cmds = []
                 block_volume_cmds = []
                 block_octave_cmds = []
                 block_octave_rel = {}
@@ -1664,7 +1677,7 @@ def trace_segments(data, segs):
                 rel_octave_set(0)
                 loop_stack.append( [startloc, iterations, counter, octave] )
                 if format.loops_store_octave:
-                    force_octave_set = True
+                    force_octave_set = len(block_flowctrl_cmds)
                 ifprint(f"{loc:04X}: loop started with {iterations} iterations", DEBUG_LOOP_VERBOSE)
                 if len(loop_stack) > format.max_loop_stack:
                     print("warning: loop stack above {format.max_loop_stack}, behavior may become inaccurate")
@@ -1983,4 +1996,5 @@ if __name__ == "__main__":
                 mmlf.write(line + "\n")
     except IOError:
         print("Error writing {}.mml".format(fn))
-        clean_end()
+    
+    clean_end()
