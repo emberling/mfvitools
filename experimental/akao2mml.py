@@ -1,10 +1,4 @@
-VERSION = "alpha 0.8.2"
-
-CONFIG_USE_PROGRAM_MACROS = True
-CONFIG_USE_VOLUME_MACROS = True
-CONFIG_USE_OCTAVE_MACROS = True
-CONFIG_EXPAND_NOTES_TO_THREE = False
-CONFIG_REMOVE_REDUNDANT_OCTAVES = True
+VERSION = "alpha 0.8.3"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -1633,17 +1627,20 @@ def trace_segments(data, segs):
                             block_octave_cmds.append(block_flowctrl_cmds[force_octave_set])
                         except IndexError:
                             block_octave_cmds.append(loc)
-                for vloc, vol in block_volume_cmds:
-                    volume_locs[vloc] = program, vol
-                for oloc in block_octave_cmds:
-                    octave_locs[oloc] = program, octave
+                if CONFIG_USE_VOLUME_MACROS:
+                    for vloc, vol in block_volume_cmds:
+                        volume_locs[vloc] = program, vol
+                if CONFIG_USE_OCTAVE_MACROS:
+                    for oloc in block_octave_cmds:
+                        octave_locs[oloc] = program, octave
                 #handle alligator redundancy
-                for roloc, _ in block_octave_rel.items():
-                    if octave_set:
-                        if roloc not in redundant_items:
-                            redundant_items[roloc] = True
-                    else:
-                        redundant_items[roloc] = False
+                if CONFIG_REMOVE_REDUNDANT_OCTAVES:
+                    for roloc, _ in block_octave_rel.items():
+                        if octave_set:
+                            if roloc not in redundant_items:
+                                redundant_items[roloc] = True
+                        else:
+                            redundant_items[roloc] = False
                         
                 #reset static-block counters
                 block_flowctrl_cmds = []
@@ -1919,14 +1916,100 @@ if __name__ == "__main__":
         while not format:
             entry = input(">").strip()
             try:
-                format = format_list[int(entry)-1]
+                format = format_list[int(entry)-1][1]
             except (KeyError, ValueError):
                 try:
                     format = formats[entry]
                 except KeyError:
                     print("Invalid format entry '{entry}'")
     
-    origin = format.sequence_loc if spc_mode else 0
+    print(format)
+    CONFIG_IGNORE_FIRST_BYTES = 0
+    #attempt to autodetect 2-byte rom header (akao4 only, for ff6hacking song data page compatibility)
+    if not spc_mode and "AKAO4" in format.display_name:
+        header_words = []
+        for i in range(19):
+            header_words.append(bin[i*2:i*2+2])
+        # 26 00 is never the extra header and often the first word of the real header
+        if header_words[0] == b"\x26\x00":
+            pass #no rom header
+        elif header_words[1] == b"\x26\x00":
+            CONFIG_IGNORE_FIRST_BYTES = 2
+        # look for matching & offset track8/track16 pointers
+        if header_words[18] == header_words[10] and header_words[10] != header_words[2]:
+            CONFIG_IGNORE_FIRST_BYTES = 2
+    if CONFIG_IGNORE_FIRST_BYTES:
+        print(f"detected extra {CONFIG_IGNORE_FIRST_BYTES}-byte header. use option 'h0' if this is incorrect")
+        
+    while True:
+        print("Enter any additional configuration options (? for help):")
+        print()
+        entry = input(">").strip()
+        if entry and entry[0] == '?':
+            print("    hXX - ignore the first XX bytes (hex) of the input file")
+            print("    mp - disable converting program changes to macros")
+            print("    mv - disable converting volume changes to macros")
+            print("    mo - disable converting octave set commands to macros")
+            print("    o - preserve all octave up/down commands, even if redundant")
+            #print("    pXX - treat notes with program XX (hex) as percussion notes")
+            print("    t - use ties instead of & for rendering three-byte notes")
+            print()
+            print("for example, if you want something closer to a byte-accurate conversion while sacrificing")
+            print("convenience features, and you know your data file includes the two-byte length")
+            print("header present in AKAO ROM data rips, you could enter:")
+            print("  h2 o mp mv mo")
+            print()
+            continue
+            
+        CONFIG_USE_PROGRAM_MACROS = True
+        CONFIG_USE_VOLUME_MACROS = True
+        CONFIG_USE_OCTAVE_MACROS = True
+        CONFIG_EXPAND_NOTES_TO_THREE = False
+        CONFIG_REMOVE_REDUNDANT_OCTAVES = True
+
+        options = entry.split(' ')
+        options_hex_int = ['h', 'p']
+        options_str = ['m']
+        for option in options:
+            if not len(option):
+                continue
+            val = None
+            if option[0] in options_hex_int:
+                try:
+                    val = int(option[1:], 16)
+                except ValueError:
+                    print(f"invalid parameter '{option[1:]}' for option {option[0]}")
+                    continue
+            elif option[0] in options_str:
+                val = option[1:]
+            
+            if option[0] == 'h':
+                CONFIG_IGNORE_FIRST_BYTES = val
+                print(f"{option}: ignoring 0x{val:X} bytes")
+            elif option[0] == 'm':
+                if val == 'p':
+                    CONFIG_USE_PROGRAM_MACROS = False
+                    print(f"{option}: program change macros disabled")
+                elif val == 'v':
+                    CONFIG_USE_VOLUME_MACROS = False
+                    print(f"{option}: volume change macros disabled")
+                elif val == 'o':
+                    CONFIG_USE_OCTAVE_MACROS = False
+                    print(f"{option}: octave setting macros disabled")
+                else:
+                    print(f"{option}: unrecognized sub-option '{val}'")
+            elif option[0] == 'o':
+                CONFIG_REMOVE_REDUNDANT_OCTAVES = False
+                print(f"{option}: preserving all octave up and down commands")
+            elif option[0] == 'p':
+                print(f"{option}: nyi")
+            elif option[0] == 't':
+                CONFIG_EXPAND_NOTES_TO_THREE = True
+                print(f"{option}: using ties instead of & for three-byte note durations")
+        print()
+        break
+        
+    origin = format.sequence_loc if spc_mode else 0 + CONFIG_IGNORE_FIRST_BYTES
     register_notes()
     
     jumps = {}
