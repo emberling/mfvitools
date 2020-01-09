@@ -1,4 +1,4 @@
-VERSION = "alpha 0.8.3"
+VERSION = "alpha 0.8.4"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -7,7 +7,7 @@ DEBUG_STATE_VERBOSE = False
 DEBUG_PERC_VERBOSE = False
 DEBUG_WRITE_VERBOSE = False
 
-import sys, itertools, copy
+import sys, itertools, copy, string, os
 
 def ifprint(text, condition, **kwargs):
     if condition:
@@ -137,12 +137,15 @@ class Note(Code):
         self.params = [] if dur else( [Increment(1)] if format.note_increment_custom_duration else [P(1)])
         self.dest = None
       
-    def write(self, cmd, _):
+    def write(self, cmd, loc):
+        note = self.note
+        if loc in forced_percussion_notes:
+            note = forced_percussion_notes[loc]
         if self.params:
             dur = self.params[0](cmd)
-            return specify_note_duration(self.note, dur)
+            return specify_note_duration(note, dur)
         else:
-            return Code.write(self, cmd, _)
+            return note + self.dur
             
 class KawakamiNote(Note):
     def __init__(self, note, idx):
@@ -162,6 +165,9 @@ class KawakamiNote(Note):
             self.dest = None
             
     def write(self, cmd, loc):
+        note = self.note
+        if loc in forced_percussion_notes:
+            note = forced_percussion_notes[loc]
         if self.params:
             dur = self.params[0](cmd)
         else:
@@ -171,7 +177,7 @@ class KawakamiNote(Note):
                 print(f"{loc:04X}: warning: no duration info for note {cmd[0]:02X} ({self.symbol})")
                 dur_table = [d for d in format.duration_table if isinstance(d, int)]
                 dur = dur_table[self.idx]
-        text = specify_note_duration(self.note, dur)
+        text = specify_note_duration(note, dur)
         return text
         
 class DoubleCode(Code):
@@ -355,8 +361,8 @@ def write_octave_macro(progval, octave, loc=0):
         return ""
     if progval in sample_mappings: #suzuki
         progval = convert_program(sample_mappings[progval])
-    elif sample_mappings:
-        print(f"why the hell are you writing about program {progval:02X}")
+    elif sample_mappings and progval is not None:
+        print(f"program mapping for sample {progval:02X} not found")
     if progval is None:
         macro_id = "??"
         print(f"warning: unknown program in octave change at {loc:04X}")
@@ -406,8 +412,8 @@ def write_volume_macro(progval, volume, env=None, loc=0):
     env_text = "" if env is None else f"{env},"
     if progval in sample_mappings: #suzuki
         progval = convert_program(sample_mappings[progval])
-    elif sample_mappings:
-        print(f"why the hell are you writing about program {progval:02X}")
+    elif sample_mappings and progval is not None:
+        print(f"program mapping for sample {progval:02X} not found")
     if progval is None:
         macro_id = "??"
         print(f"warning: unknown program in volume change at {loc:04X}")
@@ -1254,7 +1260,31 @@ def register_percussion_note(prg=0x2F, key=69, pan=64, symbol=None, id=None, smp
     percussion_defs[symbol] = PercussionDef(prg, key, pan, smp=smp)
     ifprint(f"Defined percussion {symbol} as {percussion_defs[symbol].write()}", DEBUG_PERC_VERBOSE)
 
+def calculate_forced_percussion():    
+    potential_symbols = string.ascii_lowercase[7:]
+    if len(forced_percussion_locs) > len(potential_symbols):
+        potential_symbols += [c + '+' for c in string.ascii_lowercase[7:]]
+        if len(forced_percussion_locs) > len(potential_symbols):
+            potential_symbols += [c + '-' for c in string.ascii_lowercase[7:]]
+            if len(forced_percussion_locs) > len(potential_symbols):
+                potential_symbols += [c + '-' for c in string.ascii_lowercase[:7]]
+    symbol_idx = 0
     
+    defs = []
+    program = None
+    for (prg, oct, keyid), locs in sorted(forced_percussion_locs.items()):
+        if prg != program:
+            defs.append(f"## auto percussion  0x{prg:02X}")
+            program = prg
+        key = note_symbol_by_id[keyid]
+        symbol = potential_symbols[symbol_idx]
+        defs.append(f'#drum "{symbol}"= {oct}{key}')
+        for loc in locs:
+            forced_percussion_notes[loc] = symbol
+        
+        symbol_idx += 1
+    return defs
+                
 # # # # # HEADER # # # # #
 
 def parse_header(data, loc=0):
@@ -1494,6 +1524,7 @@ def trace_segments(data, segs):
         percussion = False
         percussion_marked = False
         percussion_state = None
+        force_perc_state = False
         dur_table = []
         if format.dynamic_note_duration:
             dur_table = [d for d in format.duration_table if isinstance(d, int)]
@@ -1515,13 +1546,24 @@ def trace_segments(data, segs):
                 eof = loc + len(cmd)
             
             next_loc = loc + cmdinfo.length
-                        
+            
+            force_perc_state = False
+            #handle forced percussion
+            if forced_percussion_prgs:
+                if cmdinfo.type == "program":
+                    if cmdinfo.get(cmd) != program:
+                        force_perc_state = "on" if cmdinfo.get(cmd) in forced_percussion_prgs else "off"
+                if program in forced_percussion_prgs and cmdinfo.type == "note" and cmdinfo.percid is not None:
+                    if (program, octave, cmdinfo.percid) not in forced_percussion_locs:
+                        forced_percussion_locs[(program, octave, cmdinfo.percid)] = set()
+                    forced_percussion_locs[(program, octave, cmdinfo.percid)].add(loc)
+                                            
             #handle percussion
-            if "PercOn" in cmdinfo.type:
+            if "PercOn" in cmdinfo.type or force_perc_state == "on":
                 percussion = True
                 percussion_state = None
                 ifprint(f"{loc:04X}: PercOn - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
-            elif "PercOff" in cmdinfo.type:
+            elif "PercOff" in cmdinfo.type or force_perc_state == "off":
                 percussion = False
                 percussion_state = None
                 if percussion_marked:
@@ -1547,11 +1589,12 @@ def trace_segments(data, segs):
                         percussion_resets.add(loc)
                     percussion_states[loc] = percussion_state
                     percussion_state = cmdinfo.percid
-                    if note_symbol_by_id[cmdinfo.percid] not in percussion_defs:
-                        register_percussion_note(id=cmdinfo.percid)
-                    perc_prg = percussion_defs[note_symbol_by_id[cmdinfo.percid]].prg_raw
-                    if perc_prg != program:
-                        program = perc_prg
+                    if program not in forced_percussion_prgs:
+                        if note_symbol_by_id[cmdinfo.percid] not in percussion_defs:
+                            register_percussion_note(id=cmdinfo.percid)
+                        perc_prg = percussion_defs[note_symbol_by_id[cmdinfo.percid]].prg_raw
+                        if perc_prg != program:
+                            program = perc_prg
                 else:
                     if percussion_marked:
                         ifprint("perc: Not a percussion note, mark is active, deactivating", DEBUG_PERC_VERBOSE)
@@ -1592,21 +1635,17 @@ def trace_segments(data, segs):
                 block_volume_cmds.append((loc, adjusted_volume()))
                 volume_set = True
                 ifprint(f"{loc:04X}: set expression to {expression}", DEBUG_STATE_VERBOSE)
-                #volume_locs[loc] = program
             elif cmdinfo.type == "octave":
                 octave = cmdinfo.get(cmd, 'octave_param')
                 block_octave_cmds.append(loc)
                 octave_set = True
                 ifprint(f"{loc:04X}: set octave to {octave}", DEBUG_STATE_VERBOSE)
-                #octave_locs[loc] = program
             elif cmd[0] in format.octave_up and octave:
                 block_octave_rel[loc] = cmd
                 octave += 1
-                #print(f"{loc:04X}: raise octave to {octave}")
             elif cmd[0] in format.octave_down and octave:
                 block_octave_rel[loc] = cmd
                 octave -= 1
-                #print(f"{loc:04X}: lower octave to {octave}")
 
             if cmd[0] in flowctrl_cmds:
                 block_flowctrl_cmds.append(loc)
@@ -1822,6 +1861,14 @@ def write_mml(data):
         cmdinfo = format.bytecode[cmd]
         cmd = data[loc:loc+cmdinfo.length]
         
+        #write volume/octave macros if not a volume/octave command
+        if loc in volume_locs:
+            if "volume" not in cmdinfo.type and "expression" not in cmdinfo.type:
+                new_text += write_volume_macro(*volume_locs[loc], loc=loc)
+        if loc in octave_locs:
+            if "octave" not in cmdinfo.type:
+                new_text += write_octave_macro(*octave_locs[loc], loc=loc)
+
         #percussion
         if loc in percussion_starts:
             new_text += '"'
@@ -1834,14 +1881,6 @@ def write_mml(data):
         if percussion_marked != percussion_end_state:
             percussion_marked = percussion_end_state
             new_text += '"'
-        
-        #write volume/octave macros if not a volume/octave command
-        if loc in volume_locs:
-            if "volume" not in cmdinfo.type and "expression" not in cmdinfo.type:
-                new_text += write_volume_macro(*volume_locs[loc], loc=loc)
-        if loc in octave_locs:
-            if "octave" not in cmdinfo.type:
-                new_text += write_octave_macro(*octave_locs[loc], loc=loc)
         
         #write command to mml
         if loc in append_before_items:
@@ -1863,7 +1902,7 @@ def write_mml(data):
 def clean_end():
     print("Processing ended.")
     input("Press enter to close.")
-    quit()
+    os._exit(0)
     
 ############
 ### MAIN ###
@@ -1923,8 +1962,14 @@ if __name__ == "__main__":
                 except KeyError:
                     print("Invalid format entry '{entry}'")
     
-    print(format)
     CONFIG_IGNORE_FIRST_BYTES = 0
+    CONFIG_USE_PROGRAM_MACROS = True
+    CONFIG_USE_VOLUME_MACROS = True
+    CONFIG_USE_OCTAVE_MACROS = True
+    CONFIG_EXPAND_NOTES_TO_THREE = False
+    CONFIG_REMOVE_REDUNDANT_OCTAVES = True
+    forced_percussion_prgs = set()
+    
     #attempt to autodetect 2-byte rom header (akao4 only, for ff6hacking song data page compatibility)
     if not spc_mode and "AKAO4" in format.display_name:
         header_words = []
@@ -1951,7 +1996,7 @@ if __name__ == "__main__":
             print("    mv - disable converting volume changes to macros")
             print("    mo - disable converting octave set commands to macros")
             print("    o - preserve all octave up/down commands, even if redundant")
-            #print("    pXX - treat notes with program XX (hex) as percussion notes")
+            print("    pXX - treat notes with program XX (hex) as percussion notes")
             print("    t - use ties instead of & for rendering three-byte notes")
             print()
             print("for example, if you want something closer to a byte-accurate conversion while sacrificing")
@@ -1960,13 +2005,7 @@ if __name__ == "__main__":
             print("  h2 o mp mv mo")
             print()
             continue
-            
-        CONFIG_USE_PROGRAM_MACROS = True
-        CONFIG_USE_VOLUME_MACROS = True
-        CONFIG_USE_OCTAVE_MACROS = True
-        CONFIG_EXPAND_NOTES_TO_THREE = False
-        CONFIG_REMOVE_REDUNDANT_OCTAVES = True
-
+    
         options = entry.split(' ')
         options_hex_int = ['h', 'p']
         options_str = ['m']
@@ -2002,7 +2041,8 @@ if __name__ == "__main__":
                 CONFIG_REMOVE_REDUNDANT_OCTAVES = False
                 print(f"{option}: preserving all octave up and down commands")
             elif option[0] == 'p':
-                print(f"{option}: nyi")
+                forced_percussion_prgs.add(val)
+                print(f"{option}: adding program 0x{val:02X} notes as percussion notes")
             elif option[0] == 't':
                 CONFIG_EXPAND_NOTES_TO_THREE = True
                 print(f"{option}: using ties instead of & for three-byte note durations")
@@ -2035,6 +2075,8 @@ if __name__ == "__main__":
     percussion_resets = set()
     percussion_states = {}
     percussion_defs = {}
+    forced_percussion_locs = {}
+    forced_percussion_notes = {}
     replace_items = {}
     redundant_items = {}
     
@@ -2055,6 +2097,7 @@ if __name__ == "__main__":
     if not format.sequence_relative: #akao1, akao2
         bin = bin[:end]
     
+    forced_percussion_defs = calculate_forced_percussion()
     mml = write_mml(bin)
     
     prepend = [f"##created with akao2mml {VERSION}"]
@@ -2069,6 +2112,8 @@ if __name__ == "__main__":
         prepend += [""]
         for k, v in sorted(percussion_defs.items()):
             prepend += [f'#drum "{k}"= {v.write()}']
+    if forced_percussion_defs:
+        prepend += [""] + forced_percussion_defs
             
     mml = prepend + mml
     
