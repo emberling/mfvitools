@@ -1,4 +1,4 @@
-VERSION = "alpha 0.8.4"
+VERSION = "alpha 0.8.5"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -148,9 +148,11 @@ class Note(Code):
             return note + self.dur
             
 class KawakamiNote(Note):
-    def __init__(self, note, idx):
+    def __init__(self, noteid, idx):
         self.type = "note"
+        note = format.note_table[noteid]
         self.idx = idx
+        self.percid = noteid if noteid < 12 else None
         if idx == 7:
             self.note = note
             self.length = 2
@@ -1246,7 +1248,7 @@ def register_notes():
         for i, note in enumerate(format.note_table):
             for j, dur in enumerate(format.duration_table):
                 if format.dynamic_note_duration == True: #kawakami
-                    format.bytecode[i * multiplier + j + format.first_note_id] = KawakamiNote(note, j)
+                    format.bytecode[i * multiplier + j + format.first_note_id] = KawakamiNote(i, j)
                 else: #akao
                     format.bytecode[i * multiplier + j + format.first_note_id] = Note(i, dur)
            
@@ -1406,7 +1408,7 @@ def parse_header(data, loc=0):
                         found = True
                         break
             if not found:
-                print("sequence scanner method 1 failed, trying another (may false positive")
+                print("sequence scanner method 1 failed, trying another (may false positive)")
                 for i in range(sequence_pos-2, 0xA000, -1):
                     if data[i] == 0x0B:
                         #17 and 18 bytes before the 0B should be <= 8
@@ -1432,7 +1434,7 @@ def parse_header(data, loc=0):
             ii = i*2
             track_start = int.from_bytes(header[ii:ii+2], "little")
             first_track = min(first_track, track_start)
-            tracks[i] = track_start
+            tracks[i-1] = track_start
         shift_amt = first_track - header_length
 
 
