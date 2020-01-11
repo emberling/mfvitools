@@ -88,7 +88,7 @@ codes = { #arg bytes, readable name
     0xF8: (2, "Filter"),
     0xF9: (0, "Output+"),
     0xFA: (3, "CTJumpIf"),
-    0xFB: (0, "DrumMode"),
+    0xFB: (0, "IgnoreMvol"),
     0xFC: (2, "JumpIf"),
     0xFD: (1, "???FD???"),
     0xFE: (2, "???FE???"),

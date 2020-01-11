@@ -59,6 +59,7 @@ command_tbl = {
     ("%g0", 0): 0xE7,#disable roll (enable gaps between notes)
     ("%g1", 0): 0xE6,#enable roll (disable gaps between notes)
     #("%k", 1): 0xF6 - jump to marker, segment continues
+    ("%i", 0): 0xFB, #ignore master volume (ff6)
     ("%k", 1): 0xD9, #set transpose
     ("%l0", 0): 0xE5,#disable legato 
     ("%l1", 0): 0xE4,#enable legato
@@ -159,7 +160,7 @@ byte_tbl = {
     0xF8: (2, "%f"),
     0xF9: (0, "u1"),
     0xFA: (0, "u0"),
-    0xFB: (0, '"'),
+    0xFB: (0, '%i'),
     0xFC: (2, ":"),
     0xFD: (1, "{FD}")
    }
