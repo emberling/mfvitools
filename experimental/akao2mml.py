@@ -1002,7 +1002,7 @@ formats["sd3"].bytecode = {
     0xE2: VolumeCode(2, "v", params=[P(1)], volume_param=1),
     0xE3: Comment(1, "VolRel {}", params=[P(1)]),
     0xE4: VolumeCode(3, "v", params=[P(1), P(2)], env_param=1, volume_param=2),
-    0xE5: Comment(3, "PortaMode {} {}", params=[P(1), P(2)]),
+    0xE5: Comment(3, "m", params=[P(1), Signed(2)]),
     0xE6: Comment(1, "PortaToggle"),
     0xE7: Code(2, "p", params=[Scaled(1, .5)]),
     0xE8: Code(3, "p", params=[P(1), Scaled(2, .5)], env_param=1),
@@ -1078,7 +1078,7 @@ formats["bl"].program_base = 0x8
 formats["bl"].note_increment_custom_duration = False
 formats["bl"].bytecode[0xD2] = Comment(2, "TimerFreq {}", params=[P(1)])
 formats["bl"].bytecode[0xD3] = Comment(2, "TimerFreq Rel {}", params=[P(1)])
-formats["bl"].bytecode[0xE0] = Comment(2, "E0 {}", params=[P(1)])
+formats["bl"].bytecode[0xE0] = Comment(2, "RestRelease {}", params=[P(1)])
 formats["bl"].bytecode[0xF6] = Comment(2, "F6 {}", params=[P(1)])
 formats["bl"].bytecode[0xFC] = Code(1, "<")
 formats["bl"].bytecode[0xFD] = Code(1, "<")
