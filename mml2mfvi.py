@@ -131,7 +131,7 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
             if line.startswith("#WAVE") and len(line) > 5:
                 for c in v:
                     if c in line:
-                        line = re.sub(c+'.*?'+c, '', line)
+                        line = re.sub(re.escape(c)+'.*?'+re.escape(c), '', line)
                 line = re.sub('[^x\da-fA-F]', ' ', line[5:])
                 tokens = line.split()
                 if len(tokens) < 2: continue
@@ -197,10 +197,10 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                 pre = pre.replace("'", "").strip()
                 for c in ignore:
                     try:
-                        post = re.sub(c+".*?"+c, "", post)
+                        post = re.sub(re.escape(c)+".*?"+re.escape(c), "", post)
                     except Exception:
                         c = "\\" + c
-                        post = re.sub(c+".*?"+c, "", post)
+                        post = re.sub(re.escape(c)+".*?"+re.escape(c), "", post)
                     post = "".join(post.split())
                 macros[pre] = post.lower()
     
@@ -221,7 +221,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                 tweaks[cmd] = (twx.group(1), twx.group(3))
                 mx = mx.replace(twx.group(0), "", 1)
             #
-            s = macros[m] if m in macros else ""
+            s = macros[m.lower()] if m.lower() in macros else ""
             p = 0
             if tweaks:
                 # "o,,": ("+", ",1,")
@@ -248,7 +248,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                     while sq and sq[0] in "1234567890,.+-x":
                         d += sq.pop(0)
                     cmd = c + ''.join([ch for ch in d if ch == ','])
-                    if cmd in tweaks:
+                    if d and (cmd in tweaks):
                         d = d.split(',')
                         e = tweaks[cmd][1].split(',')
                         sign = tweaks[cmd][0]
@@ -270,14 +270,14 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                                 except:
                                     warn("error parsing {} into {}".format(r.group(0), s))      
                                     dn = 0
-                            if sign is "*":
+                            if sign == "*":
                                 result = dn * en
-                            elif sign is "-":
+                            elif sign == "-":
                                 result = dn - en
-                            elif sign is "+":
+                            elif sign == "+":
                                 result = dn + en
                             if result < 0: result = 0
-                            if ((cmd is "v" or cmd is "p") and j==0) or ((cmd is "v," or cmd is "p,") and j==1):
+                            if ((cmd == "v" or cmd == "p") and j==0) or ((cmd == "v," or cmd == "p,") and j==1):
                                 if result > 127: result = 127
                             else:
                                 if result > 255: result = 255
@@ -290,7 +290,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                                                     
             line = line.replace(r.group(0), s, 1)
             
-        mml[i] = line
+        mml[i] = line.replace('\n', ' ')
         
     #drums
     drums = {}
@@ -300,10 +300,10 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
             s = s.split('#')[0].lower()
             for c in ignore:
                 try:
-                    s = re.sub(c+".*?"+c, "", s)
+                    s = re.sub(re.escape(c)+".*?"+re.escape(c), "", s)
                 except Exception:
                     c = "\\" + c
-                    s = re.sub(c+".*?"+c, "", s)
+                    s = re.sub(re.escape(c)+".*?"+re.escape(c), "", s)
             for c in ["~", "/", "`", "\?", "_"]:
                 s = re.sub(c, '', s)
             d = Drum(s.strip())
