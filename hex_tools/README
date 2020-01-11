@@ -1,0 +1,150 @@
+mfvitools - some things i wrote to make ff6 music importing/editing easier
+r3b.testing                      emberling
+
+this is sort of thrown together and might crash or break your stuff
+and will definitely have a bunch of confusing irrelevant outputs
+
+CLEAN -- prepares an import so that it works better with the quirks of ff6's
+        version of the sound engine specifically
+        
+        if volumes or pans seem to be on a 0~~FF scale, it halves them all
+        to match ff6's 0~~7F scale
+        
+        adjusts pointers to be relative (so 00 00 is the file beginning and
+        26 00 is the end of the header)
+        
+        replaces a few guaranteed crash commands (FE, FD) with harmless CC's
+        NOTE: this assumes that FE and FD use one parameter
+        I have sometimes seen them use apparently zero or two
+        Watch the output for "purging" FE or FD and if it happens,
+        make sure to manually check against the original file to be sure
+        it hasn't guessed wrong.
+        
+
+SPLIT -- this does two things: divides the data file into separate files
+        that generally map to channels (split after F6 jumps)
+        and produces a visual representation of what those channels are
+        doing and how they match up sequentially with others.
+        
+        All pointers are translated into a new format where the first
+        digit is a reference to the data file and the other three digits
+        are a location within that data file (in regular, human readable
+        order).
+        
+        So if your main data file begins with this, after the header:
+            DC 00 D6 05 B6 B6 00 F6 2E 00 DC 01 D6 04 B6 01 1D F6 34 00
+        it will produce a filename.01 with:
+            DC 00 D6 05 B6 B6 00 F6 00 05
+        and a filename.02 with:
+            DC 01 D6 04 B6 01 1D F6 10 04
+            
+        if there are more than $FFF bytes between F6's or more than 16 F6's
+        ... i don't really know what happens. maybe it will mess up
+        the pointers, maybe it will just crash! shouldn't come up often
+
+MERGE -- takes those individual files made by SPLIT and mashes them back
+        together, converting the pointers back to the proper format
+        for import
+        
+
+new in r2:
+DRUMS -- a Chrono Trigger import tool, mainly, though it may also be useful
+        for RS3, etc. Used after SPLIT. Detects use of "drum mode" and replaces
+        it with the more standard program change calls FF6 can understand.
+        Assigns each new drum it encounters to the next unused program.
+        Sets octave to 5 when drum mode is enabled, and tries to set it back
+        to where it was after it's disabled, though this algorithm is quite
+        basic and capable of getting confused on e.g. loops that increment/
+        decrement octave each iteration. Does not adjust volume or pan, but
+        changing those manually becomes easier since you now have a DC xx
+        call to search for.
+        
+OCTAVE -- This is just a minor edit to the Drums code that uses the same method
+        to affect a different sort of area .. specifically, it looks for areas
+        using a specified instrument/program and tries to blanket shift them
+        up or down one or more octaves. It uses only the most basic processes:
+        octave change commands are added, but never removed. As such, this
+        script should not be thought of as a tool that performs a portion of
+        the editing for you, but as a tool that allows quick and hassle-free
+        octave shifting for the purposes of prototyping instrument selections.
+        It can be very convenient for instruments used in multiple channels,
+        or for instruments used in channels that switch often between several
+        instruments. But it CAN mess up your sequence and/or your looping, so
+        apply with caution, or with the intent to throw out the generated
+        sequence and rebuild it by hand once you've used the generated version
+        to decide which octaves you want to use.
+
+new in r3:
+MML2MFVI -- extended implementation of rs3extool2-compatible MML
+        this SHOULD be feature-complete for FF6's sound engine; no known
+        command is unimplemented.
+        new commands:
+            {X} -- all text in braces is ignored but any number 1-16
+                will point the channel header to that location.
+                Channels 9-16 will duplicate 1-8 unless otherwise set
+                Unset channels point to EOF
+            |X -- shortcut for @0x2X. program change, in hex.
+            %aX -- set attack
+            %yX -- set decay
+            %rX -- set release
+            %sX -- set sustain
+            %a / %y / %r / %s -- reset ADSR to default
+            %bX,Y -- set echo feedback (with proper # of parameters)
+                for backwards compatibility, %bX works as before.
+            %fX,Y -- set filter (with proper # of parameters)
+                likewise, %fX works as before.
+            %g0 / %g1 -- disable/enable drum roll
+            mX -- add to transpose
+            s0,X / s1,X -- play sfx X with voice a / b
+            u0 / u1 -- clear output code / increment output code (?????)
+            &X -- add to note duration
+            $X -- jump marker with id
+                this is independent from $ and will not work with ;
+                these ids are not specific to any channel/track
+            jX -- after X iterations, jump to after next ]
+            jX,Y -- after X iterations, jump to $Y (in any track)
+                If there is more than one $Y, the one that will be used is
+                the most recent one set. If none are set, the last one
+                in the file is used. (Don't duplicate jump markers tho)
+            :X -- conditional jump (FC) to $X.
+            ;X -- hard jump (F6) to $X, for e.g. doubling channels
+            
+MFVI2MML -- convert FF6 music binaries into mfvitools-format MML.
+        If everything is working properly, this should be a
+        completely lossless conversion, with the exception of:
+            -unknown bytes
+            -jumps that go outside the song data, or into the middle
+             of a command.
+             
+USE EXAMPLE:
+Say we want to import a song from Mystic Quest.
+It can be converted to approximately the right format by FF5~FF6MCS2
+but it will be messed up, so we need to fix it.
+
+The first rule of Mystic Quest import is the pointers are all lies.
+Just ignore them entirely.
+First run clean, which will fix the pan.
+Then just split it, and overwrite the 00 file with this:
+00 00 10 00 20 00 30 00 40 00 50 00 60 00 70 00
+00 00 10 00 20 00 30 00 40 00 50 00 60 00 70 00
+This sets all the channels to begin at the beginning of each split
+file.
+
+Open the .txt and listen to the original spc to figure out where
+the correct loop point is. Most of the time this will be a single
+vertical line across all channels in the .txt
+Figure out where in the file this line represents (check the
+measure line above the notes for a hint) and set the final F6
+to point to it. The first digit after F6 should be one less than
+the filename's number, unless something fancy is going on.
+
+If there are any F5's, point them to just after the next D3.
+If this doesn't work, there might be a second D3 afterward
+that needs to be deleted (MQ seems fine with ending a loop
+that's already ended, but FF6 is not.)
+
+Once this is done run merge and copy the new data file into the rom.
+It should loop properly. If any adjustments to octave or dynamics
+are needed then editing split will help greatly since only one or
+two pointers max, usually none, will need to be adjusted as the
+filesize changes.
