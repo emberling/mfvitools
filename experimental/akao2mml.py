@@ -1,4 +1,4 @@
-VERSION = "alpha 0.8.5"
+VERSION = "alpha 0.8.6"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -1570,6 +1570,7 @@ def trace_segments(data, segs):
                 percussion_state = None
                 if percussion_marked:
                     percussion_ends.add(loc)
+                    percussion_marked = False
                 ifprint(f"{loc:04X}: PercOff - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
             if percussion:
                 if loc in percussion_states:
@@ -1824,12 +1825,14 @@ def write_mml(data):
         if not percussion_marked:
             new_text += '"'
             percussion_marked = True
+            status.append("ForceP.on")
             
     def ensure_no_percussion():
         nonlocal percussion_marked, new_text
         if percussion_marked:
             new_text += '"'
             percussion_marked = False
+            status.append("ForceP.end")
             
     mml = []
     line = ""
@@ -1837,9 +1840,12 @@ def write_mml(data):
     percussion_marked = False
     percussion_end_state = False
     while loc < len(data):
+        status = [] #debug info
+        
         #text maintenance
         if len(line.rpartition('\n')[2]) >= 70:
             crlf()
+            status.append("LF")
         
         new_text = ""
         
@@ -1847,6 +1853,7 @@ def write_mml(data):
             new_text += '"'
             percussion_marked = False
             percussion_end_state = False
+            status.append("P.end")
             
         #check for targets at this location
         if loc in tracks:
@@ -1854,9 +1861,11 @@ def write_mml(data):
             crlf(2)
             new_text += f"{{{tracks[loc]}}}"
             crlf()
+            status.append("Track")
         if loc in jumps:
             ensure_no_percussion()
             new_text += f"${jumps[loc]}"
+            status.append("Jump")
             
         #read control byte
         cmd = data[loc]
@@ -1867,33 +1876,41 @@ def write_mml(data):
         if loc in volume_locs:
             if "volume" not in cmdinfo.type and "expression" not in cmdinfo.type:
                 new_text += write_volume_macro(*volume_locs[loc], loc=loc)
+                status.append("vol")
         if loc in octave_locs:
             if "octave" not in cmdinfo.type:
                 new_text += write_octave_macro(*octave_locs[loc], loc=loc)
+                status.append("oct")
 
         #percussion
         if loc in percussion_starts:
             new_text += '"'
             percussion_marked = True
             percussion_end_state = True
+            status.append("P.on")
         if loc in percussion_resets:
             ensure_percussion()
             new_text += " !!!o "
+            status.append("P.reset")
         
         if percussion_marked != percussion_end_state:
             percussion_marked = percussion_end_state
             new_text += '"'
+            status.append("P.adjust")
         
         #write command to mml
         if loc in append_before_items:
             new_text += append_before_items[loc]
+            status.append("append")
         if loc in replace_items:
             new_text += replace_items[loc]
+            status.append("replace")
         elif loc not in redundant_items or not redundant_items[loc]:
             new_text += cmdinfo.write(cmd, loc)
 
         #advance
-        ifprint(f"{loc:04X}: writing {' '.join([f'{b:02X}' for b in cmd])} as {new_text}", DEBUG_WRITE_VERBOSE)
+        status = ('(' + ', '.join(status) + ')') if status else ""
+        ifprint(f"{loc:04X}: writing {' '.join([f'{b:02X}' for b in cmd])} as {new_text}    {status}", DEBUG_WRITE_VERBOSE)
         line += new_text
         
         loc += cmdinfo.length
