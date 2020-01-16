@@ -1,4 +1,4 @@
-VERSION = "alpha 0.8.7"
+VERSION = "alpha 0.8.7a"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -1847,13 +1847,12 @@ def write_mml(data):
     percussion_end_state = False
     while loc < len(data):
         status = [] #debug info
+        new_text = ""
         
         #text maintenance
         if len(line.rpartition('\n')[2]) >= 70:
             crlf()
             status.append("LF")
-        
-        new_text = ""
         
         if loc in percussion_ends:
             new_text += '"'
