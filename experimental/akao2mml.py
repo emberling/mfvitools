@@ -1,4 +1,4 @@
-VERSION = "alpha 0.8.6"
+VERSION = "alpha 0.8.7"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -932,7 +932,7 @@ formats["fm"].use_expression = True
 formats["fm"].tempo_scale = (60000 / 252) / 256
 formats["fm"].tempo_mode = "fm"
 formats["fm"].bytecode[0xF9] = Comment(2, "F9 {}", params=[P(1)])
-formats["fm"].bytecode[0xFA] = Jump(3, ":", dest=Multi(1,2))
+formats["fm"].bytecode[0xFA] = Jump(4, ":", dest=Multi(2,2))
 formats["fm"].bytecode[0xFB] = Percussion(1, True)
 formats["fm"].bytecode[0xFC] = Percussion(1, False)
 formats["fm"].bytecode[0xFD] = ExpressionCode(2, "{e}", params=[P(1)], expression_param=1)
@@ -1504,7 +1504,10 @@ def trace_segments(data, segs):
     segs = list(segs)
     eof = 0
     seg_counter = 0
+    already_traced_segs = []
     for seg in segs:
+        if seg in already_traced_segs: continue
+        already_traced_segs.append(seg)
         seg_counter += 1
         #reset state variables
         loop_stack = []
@@ -1813,12 +1816,15 @@ def trace_segments(data, segs):
 def write_mml(data):
     
     def crlf(n=1):
-        nonlocal line
+        nonlocal line, new_text
         mml.append(line)
         while n > 1:
             mml.append("")
             n -= 1
         line = ""
+        if new_text:
+            mml.append(new_text)
+            new_text = ""
         
     def ensure_percussion():
         nonlocal percussion_marked, new_text
@@ -1858,12 +1864,13 @@ def write_mml(data):
         #check for targets at this location
         if loc in tracks:
             ensure_no_percussion()
-            crlf(2)
+            crlf()
             new_text += f"{{{tracks[loc]}}}"
             crlf()
             status.append("Track")
         if loc in jumps:
             ensure_no_percussion()
+            crlf()
             new_text += f"${jumps[loc]}"
             status.append("Jump")
             
@@ -1908,6 +1915,9 @@ def write_mml(data):
         elif loc not in redundant_items or not redundant_items[loc]:
             new_text += cmdinfo.write(cmd, loc)
 
+        if cmd[0] in format.hard_jump:
+            crlf()
+            
         #advance
         status = ('(' + ', '.join(status) + ')') if status else ""
         ifprint(f"{loc:04X}: writing {' '.join([f'{b:02X}' for b in cmd])} as {new_text}    {status}", DEBUG_WRITE_VERBOSE)
