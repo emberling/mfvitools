@@ -2128,7 +2128,7 @@ if __name__ == "__main__":
     forced_percussion_defs = calculate_forced_percussion()
     mml = write_mml(bin)
     
-    prepend = [f"##created with akao2mml {VERSION}"]
+    prepend = [f"##created with sqspcmml {VERSION}"]
     prepend += [""] + [v for k,v in sorted(sample_defs.items())]
     if CONFIG_USE_PROGRAM_MACROS:
         prepend += [""] + [v for k,v in sorted(program_defs.items())]
