@@ -58,8 +58,8 @@ command_tbl = {
     ("%f", 2): 0xF8, #filter (ff6)
     ("%g0", 0): 0xE7,#disable roll (enable gaps between notes)
     ("%g1", 0): 0xE6,#enable roll (disable gaps between notes)
-    #("%k", 1): 0xF6 - jump to marker, segment continues
     ("%i", 0): 0xFB, #ignore master volume (ff6)
+    #("%j", 1): 0xF6 - jump to marker, segment continues
     ("%k", 1): 0xD9, #set transpose
     ("%l0", 0): 0xE5,#disable legato 
     ("%l1", 0): 0xE4,#enable legato
