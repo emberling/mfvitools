@@ -12,7 +12,7 @@ Converts mfvitools MML format into binary FF6 format. Outputs a data file with 3
 
 Format is based on rs3extool MML but extended and altered. Documentation is forthcoming.
 
-AKAO2MML (currently in alpha, official release soon)
+SQSPCMML (currently in alpha, official release soon)
 
 Converts binary music sequence data from various Square SPC sequence formats into mfvitools MML format (i.e., into FF6 format). This tool does not prioritize wholly accurate representation; instead, its design is focused on convenience and utility. Program, volume, and octave commands are replaced with macros, allowing these to be tweaked globally. Features not supported by FF6 are either converted to a close equivalent or rendered as comments.
 
