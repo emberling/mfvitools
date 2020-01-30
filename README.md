@@ -11,7 +11,7 @@ Converts binary FF6 format music sequence data into mfvitools MML format. The se
 
 Converts mfvitools MML format into binary FF6 format. Outputs a data file with 38-byte header (ready to insert into ROM) and a 32-byte inst file.
 
-Format is based on rs3extool MML but extended and altered. Documentation (wiki)[on github wiki].
+Format is based on rs3extool MML but extended and altered. Documentation [on github wiki](https://github.com/emberling/mfvitools/wiki/).
 
 ## SQSPCMML
 
@@ -35,7 +35,7 @@ Supports:
 * Super Mario RPG: Legend of the Seven Stars (SUZUKI)
 * Treasure of the Rudras / Rudra no Hihou (KAWAKAMI)
 * Bandai Satellaview games by Square (AKAO4):
-** Treasure Conflix
-** DynamiTracer
-** Radical Dreamers
-** Koi ha Balance
+  * Treasure Conflix
+  * DynamiTracer
+  * Radical Dreamers
+  * Koi ha Balance
