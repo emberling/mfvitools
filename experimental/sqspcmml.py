@@ -1,4 +1,4 @@
-VERSION = "alpha 0.8.7a"
+VERSION = "beta 1.0.0"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -274,13 +274,13 @@ class ProgramCode(Code):
         if progval not in program_defs:
             if prog is not None:
                 sample_defs[prog+0x20] = f"#WAVE 0x{prog+0x20:02X} 0x00"
-                program_defs[prog+0x20] = f"#def {prog:1X}i= |{prog:1X}"
-                octave_defs[prog+0x20] = f"#def {prog:1X}o= o5"
+                program_defs[prog+0x20] = f"#def {prog:1X}i=   |{prog:1X}"
+                octave_defs[prog+0x20] = f"#def {prog:1X}o=   o5"
                 volume_defs[prog+0x20] = f"#def {prog:1X}v=   v100" + "\n" + \
                                          f"#def {prog:1X}f= v1,100"
             else:
-                program_defs[progval] = f"#def {progval}@i= @{progval}"
-                octave_defs[progval] = f"#def {progval}@o= o5"
+                program_defs[progval] = f"#def {progval}@i=   @{progval}"
+                octave_defs[progval] = f"#def {progval}@o=   o5"
                 volume_defs[progval] = f"#def {progval}@v=   v100" + "\n" + \
                                        f"#def {progval}@f= v1,100"
                 
@@ -319,13 +319,13 @@ class ProgramCodeBySample(ProgramCode):
         if progval not in program_defs:
             if prog is not None:
                 sample_defs[prog+0x20] = f"#WAVE 0x{prog+0x20:02X} 0x00"
-                program_defs[prog+0x20] = f"#def {prog:1X}i= |{prog:1X}"
-                octave_defs[prog+0x20] = f"#def {prog:1X}o= o5"
+                program_defs[prog+0x20] = f"#def {prog:1X}i=   |{prog:1X}"
+                octave_defs[prog+0x20] = f"#def {prog:1X}o=   o5"
                 volume_defs[prog+0x20] = f"#def {prog:1X}v=   v100" + "\n" + \
                                          f"#def {prog:1X}f= v1,100"
             else:
-                program_defs[progval] = f"#def {progval}@i= @{progval}"
-                octave_defs[progval] = f"#def {progval}@o= o5"
+                program_defs[progval] = f"#def {progval}@i=   @{progval}"
+                octave_defs[progval] = f"#def {progval}@o=   o5"
                 volume_defs[progval] = f"#def {progval}@v=   v100" + "\n" + \
                                        f"#def {progval}@f= v1,100"
                 
@@ -1996,6 +1996,7 @@ if __name__ == "__main__":
     CONFIG_USE_OCTAVE_MACROS = True
     CONFIG_EXPAND_NOTES_TO_THREE = False
     CONFIG_REMOVE_REDUNDANT_OCTAVES = True
+    CONFIG_DEF_SORT_MODE = "program"
     forced_percussion_prgs = set()
     
     #attempt to autodetect 2-byte rom header (akao4 only, for ff6hacking song data page compatibility)
@@ -2019,6 +2020,9 @@ if __name__ == "__main__":
         print()
         entry = input(">").strip()
         if entry and entry[0] == '?':
+            print("    dp - sort definitions by program number, excluding #WAVE (default)")
+            print("    dt - sort definitions by definition type")
+            print("    dw - sort definitions by program number, including #WAVE")
             print("    hXX - ignore the first XX bytes (hex) of the input file")
             print("    mp - disable converting program changes to macros")
             print("    mv - disable converting volume changes to macros")
@@ -2036,7 +2040,7 @@ if __name__ == "__main__":
     
         options = entry.split(' ')
         options_hex_int = ['h', 'p']
-        options_str = ['m']
+        options_str = ['d', 'm']
         for option in options:
             if not len(option):
                 continue
@@ -2050,7 +2054,17 @@ if __name__ == "__main__":
             elif option[0] in options_str:
                 val = option[1:]
             
-            if option[0] == 'h':
+            if option[0] == 'd':
+                if val == 't':
+                    CONFIG_DEF_SORT_MODE = "type"
+                    print(f"{option}: sort definitions by type")
+                elif val == 'p':
+                    CONFIG_DEF_SORT_MODE = "program"
+                    print(f"{option}: sort definitions by program")
+                elif val == 'w':
+                    CONFIG_DEF_SORT_MODE = "wave"
+                    print(f"{option}: sort definitions and sample table entries by program")
+            elif option[0] == 'h':
                 CONFIG_IGNORE_FIRST_BYTES = val
                 print(f"{option}: ignoring 0x{val:X} bytes")
             elif option[0] == 'm':
@@ -2128,14 +2142,30 @@ if __name__ == "__main__":
     forced_percussion_defs = calculate_forced_percussion()
     mml = write_mml(bin)
     
+    #prepend definitions
     prepend = [f"##created with sqspcmml {VERSION}"]
-    prepend += [""] + [v for k,v in sorted(sample_defs.items())]
-    if CONFIG_USE_PROGRAM_MACROS:
-        prepend += [""] + [v for k,v in sorted(program_defs.items())]
-    if CONFIG_USE_OCTAVE_MACROS:
-        prepend += [""] + [v for k,v in sorted(octave_defs.items())]
-    if CONFIG_USE_VOLUME_MACROS:
-        prepend += [""] + [v for k,v in sorted(volume_defs.items())]
+    if CONFIG_DEF_SORT_MODE == "type":
+        prepend += [""] + [v for k,v in sorted(sample_defs.items())]
+        if CONFIG_USE_PROGRAM_MACROS:
+            prepend += [""] + [v for k,v in sorted(program_defs.items())]
+        if CONFIG_USE_OCTAVE_MACROS:
+            prepend += [""] + [v for k,v in sorted(octave_defs.items())]
+        if CONFIG_USE_VOLUME_MACROS:
+            prepend += [""] + [v for k,v in sorted(volume_defs.items())]
+    else:
+        if CONFIG_DEF_SORT_MODE != "wave":
+            prepend += [""] + [v for k,v in sorted(sample_defs.items())]
+        used_prgvals = set(list(sample_defs.keys()) + list(program_defs.keys()) + list(octave_defs.keys()) + list(volume_defs.keys()))
+        for p in sorted(used_prgvals):
+            prepend += [""]
+            if CONFIG_DEF_SORT_MODE == "wave" and p in sample_defs:
+                prepend.append(sample_defs[p])
+            if p in program_defs:
+                prepend.append(program_defs[p])
+            if p in octave_defs:
+                prepend.append(octave_defs[p])
+            if p in volume_defs:
+                prepend.append(volume_defs[p])
     if percussion_defs:
         prepend += [""]
         for k, v in sorted(percussion_defs.items()):
@@ -2144,6 +2174,7 @@ if __name__ == "__main__":
         prepend += [""] + forced_percussion_defs
             
     mml = prepend + mml
+    ###
     
     fn = fn.rpartition('.')[0]
     try:
