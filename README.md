@@ -1,5 +1,6 @@
 # mfvitools
-some things i wrote to make ff6 music importing/editing easier
+some things i wrote to make ff6 music importing/editing easier  
+* [windows binaries](https://github.com/emberling/mfvitools/releases)
 
 Currently these are focused on manipulating song data through the MML (Music Macro Language) text format. Legacy hex based tools are provided in a subfolder, but these have little to no utility anymore.
 
