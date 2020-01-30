@@ -40,3 +40,9 @@ Supports:
   * DynamiTracer
   * Radical Dreamers
   * Koi ha Balance
+
+## "How do I get these data files into my ROM?"
+
+* The [Beyond Chaos EX](https://github.com/subtractionsoup/beyondchaos/releases) randomizer, and its cosmetic-only little sister [nascentorder](https://github.com/emberling/nascentorder), use the mfvitools MML parser for their randomized music mode.
+* [This tutorial](https://www.ff6hacking.com/forums/thread-2584.html) covers inserting data and inst files into FF6 with a hex editor.
+* The archive for [this tutorial](https://www.ff6hacking.com/forums/thread-3922.html), on translating music from binary FF6 hacks to Beyond Chaos mfvitools format MML files, contains a small python script that automatically inserts songs into a ROM with a fixed location and ID. It's not configurable enough for serious hacking, but it's convenient for testing.
