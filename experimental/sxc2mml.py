@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import sys, os, itertools
 
-DEBUG_WRITE_FULL_HEX = True
+DEBUG_WRITE_FULL_HEX = False
 CONFIG_NOTE_LENGTH_COMPENSATION = True
 
 def clean_end():
@@ -66,7 +66,7 @@ def handle_pattern(ptr):
     pdata = b""
     line = ""
     while True:
-        print(f"DEBUG: reading sequence at {loc:04X}")
+        #print(f"DEBUG: reading sequence at {loc:04X}")
         cmd = data[loc]
         if cmd == 0xFD:    # end pattern
             pdata = data[ptr:loc+1]
@@ -322,9 +322,9 @@ if __name__ == "__main__":
                 break
             if data[pattern_loc] >= 0x80:
                 pattern_transpose = data[pattern_loc] - 0x80
-                print(f"DEBUG: transposing next pattern by {pattern_transpose}")
+                #print(f"DEBUG: transposing next pattern by {pattern_transpose}")
                 pattern_loc += 1
-            print(f"DEBUG: reading pattern at {pattern_loc:04X}")
+            #print(f"DEBUG: reading pattern at {pattern_loc:04X}")
             pattern_ptr = int.from_bytes(data[pattern_loc:pattern_loc + 2], "big")
             mml.append(f"{{'{pattern_ptr:X}'}}" + handle_pattern(pattern_ptr))
             pattern_loc += 2
@@ -339,8 +339,7 @@ if __name__ == "__main__":
     prepend.append("")
     for i, p in enumerate(used_programs):
         prepend.append(f"#def Prog{p:02X}= |{i:X} %k12")
-    prepend.append("")
-        
+    prepend.append("\n#cdef ( %l1\n#cdef ) %l0\n")
     mml = prepend + mml
     
     fn = fn.rpartition('.')[0] + '.mml'
