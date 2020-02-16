@@ -1,4 +1,5 @@
-VERSION = "beta 1.0.0"
+#!/usr/bin/env python3
+VERSION = "beta 1.1.0"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -7,7 +8,7 @@ DEBUG_STATE_VERBOSE = False
 DEBUG_PERC_VERBOSE = False
 DEBUG_WRITE_VERBOSE = False
 
-import sys, itertools, copy, string, os
+import sys, itertools, copy, string, os, math
 
 def ifprint(text, condition, **kwargs):
     if condition:
@@ -24,6 +25,12 @@ class Format:
         self.scanner_data = "ph"
         self.sequence_loc = 0
         self.header_type = 0
+        
+        self.brr_table_size = 0x100
+        self.brr_table = 0
+        self.tuning_table = 0
+        self.env_table = 0
+        self.tuning_type = "double"
         
         self.note_table = []
         self.duration_table = []
@@ -55,6 +62,7 @@ class Format:
         self.zero_loops_infinite = False
         self.program_base = 0x20
         self.max_loop_stack = 4
+        self.base_octave = 5
         
 class PercussionDef:
     def __init__(self, prg, key, pan, smp=None):
@@ -69,12 +77,20 @@ class PercussionDef:
     def write(self):
         octave = self.key // 12
         note = note_symbol_by_id[self.key % 12]
-
+        
+        if format.tuning_type == "suzuki":
+            brrid = sample_mappings[self.prg_raw]
+        else:
+            brrid = self.prg
+            
         if self.prg >= format.program_base:
             prgid = self.prg - 0x20
             prgtext = f"|{prgid:1X}"
-            if self.prg not in sample_defs:
-                sample_defs[self.prg] = f"#WAVE 0x{self.prg:02X} 0x00"
+            if self.prg not in program_defs:
+                #sample_defs[self.prg] = f"#WAVE 0x{self.prg:02X} 0x00"
+                extract_brr(self.prg, brrid)
+                sample_defs[self.prg] = create_program_declaration(self.prg, brrid)
+                program_defs[self.prg] = f"#def {prgid:1X}i=   |{prgid:1X}"
                 volume_defs[self.prg] = f"#def {prgid:1X}v=   v100" + "\n" + \
                                         f"#def {prgid:1X}f= v1,100"
         else:
@@ -82,7 +98,10 @@ class PercussionDef:
                 prgtext = f"@0x{self.prg:02X}"
             else:
                 prgtext = f"@{self.prg}"
-            if self.prg not in sample_defs:
+            if self.prg not in program_defs:
+                extract_brr(self.prg, brrid)
+                sample_defs[self.prg] = "#" + create_program_declaration(self.prg, brrid)
+                program_defs[self.prg] = f"#def {self.prg}@i=   @{self.prg}"
                 volume_defs[self.prg] = f"#def {self.prg}@v=   v100" + "\n" + \
                                         f"#def {self.prg}@f= v1,100"
                 
@@ -147,7 +166,7 @@ class Note(Code):
         else:
             return note + self.dur
             
-class KawakamiNote(Note):
+class RudraNote(Note):
     def __init__(self, noteid, idx):
         self.type = "note"
         note = format.note_table[noteid]
@@ -273,14 +292,18 @@ class ProgramCode(Code):
             
         if progval not in program_defs:
             if prog is not None:
-                sample_defs[prog+0x20] = f"#WAVE 0x{prog+0x20:02X} 0x00"
+                extract_brr(prog+0x20, progval)
+                sample_defs[prog+0x20] = create_program_declaration(prog+0x20, progval)
+                #sample_defs[prog+0x20] = f"#WAVE 0x{prog+0x20:02X} 0x00"
                 program_defs[prog+0x20] = f"#def {prog:1X}i=   |{prog:1X}"
-                octave_defs[prog+0x20] = f"#def {prog:1X}o=   o5"
+                octave_defs[prog+0x20] = f"#def {prog:1X}o=   o{format.base_octave}"
                 volume_defs[prog+0x20] = f"#def {prog:1X}v=   v100" + "\n" + \
                                          f"#def {prog:1X}f= v1,100"
             else:
+                extract_brr(progval, progval)
+                sample_defs[progval] = "#" + create_program_declaration(progval, progval)
                 program_defs[progval] = f"#def {progval}@i=   @{progval}"
-                octave_defs[progval] = f"#def {progval}@o=   o5"
+                octave_defs[progval] = f"#def {progval}@o=   o{format.base_octave}"
                 volume_defs[progval] = f"#def {progval}@v=   v100" + "\n" + \
                                        f"#def {progval}@f= v1,100"
                 
@@ -318,14 +341,18 @@ class ProgramCodeBySample(ProgramCode):
             
         if progval not in program_defs:
             if prog is not None:
-                sample_defs[prog+0x20] = f"#WAVE 0x{prog+0x20:02X} 0x00"
+                #sample_defs[prog+0x20] = f"#WAVE 0x{prog+0x20:02X} 0x00"
+                extract_brr(prog+0x20, progval)
+                sample_defs[prog+0x20] = create_program_declaration(prog+0x20, progval)
                 program_defs[prog+0x20] = f"#def {prog:1X}i=   |{prog:1X}"
-                octave_defs[prog+0x20] = f"#def {prog:1X}o=   o5"
+                octave_defs[prog+0x20] = f"#def {prog:1X}o=   o{format.base_octave}"
                 volume_defs[prog+0x20] = f"#def {prog:1X}v=   v100" + "\n" + \
                                          f"#def {prog:1X}f= v1,100"
             else:
+                extract_brr(progval, progval)
+                sample_defs[progval] = "#" + create_program_declaration(progval, progval)
                 program_defs[progval] = f"#def {progval}@i=   @{progval}"
-                octave_defs[progval] = f"#def {progval}@o=   o5"
+                octave_defs[progval] = f"#def {progval}@o=   o{format.base_octave}"
                 volume_defs[progval] = f"#def {progval}@v=   v100" + "\n" + \
                                        f"#def {progval}@f= v1,100"
                 
@@ -513,7 +540,7 @@ def LfoScale(pos):
         return min(0xFF, int(cmd[pos] / 4) + 192)
     return readp
 
-def SixBitFloorScaled(pos, floor, scale): #kawakami vibrato
+def SixBitFloorScaled(pos, floor, scale): #rudra vibrato
                                           #just locking it on bidirectional
                                           #instead of figuring out its modes
     def readp(cmd):
@@ -576,6 +603,10 @@ formats["ff4"].scanner_loc = 0x900
 formats["ff4"].scanner_data = b"\x20\xC0\xCD\xCF\xBD\xE8\x00\x5D" + \
                               b"\xAF\xC8\xE0\xD0\xFB\xA2\x8A\x8F"
 formats["ff4"].sequence_loc = 0x2100
+formats["ff4"].brr_table = 0x1F00
+formats["ff4"].brr_table_size = 0x200
+formats["ff4"].tuning_table = 0x10000
+formats["ff4"].tuning_type = "single"
 formats["ff4"].sequence_relative = False
 formats["ff4"].header_type = 1 
 formats["ff4"].tempo_scale = (60000 / 216) / 256
@@ -647,6 +678,10 @@ formats["rs1"].scanner_data = b"\x20\xC0\xCD\xfF\xBD\xE8\x00\x5D" + \
                               b"\xAF\xC8\xF0\xD0\xFB\x1A\x02\xE8"
 formats["rs1"].sequence_loc = 0x2100
 formats["rs1"].sequence_relative = False
+formats["rs1"].brr_table = 0x2000
+formats["rs1"].env_table = 0x1F80
+formats["rs1"].tuning_table = 0x1F40
+formats["rs1"].tuning_type = "single"
 formats["rs1"].header_type = 1 
 formats["rs1"].tempo_scale = (60000 / 216) / 256
 formats["rs1"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "r", "^"]
@@ -716,6 +751,10 @@ formats["ffmq"].scanner_loc = 0x300
 formats["ffmq"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
                               b"\xAF\xC8\xF0\xD0\xFB\x1A\x02\x1A"
 formats["ffmq"].sequence_loc = 0x1D00
+formats["ffmq"].brr_table = 0x1C00
+formats["ffmq"].env_table = 0x1B80
+formats["ffmq"].tuning_table = 0x1B00
+formats["ffmq"].tuning_type = "double"
 formats["ffmq"].header_type = 2
 formats["ffmq"].tempo_scale = (60000 / 216) / 256
 formats["ffmq"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "^", "r"]
@@ -744,7 +783,7 @@ formats["ffmq"].bytecode = {
     0xE6: Code(1, ">"),
     0xE7: Code(2, "%k", params=[Signed(1)]),
     0xE8: Code(2, "m", params=[Signed(1)]),
-    0xE9: Code(3, "k", params=[Signed(1)]),
+    0xE9: Code(2, "k", params=[Signed(1)]),
     0xEA: ProgramCode(2, params=[P(1)]),
     0xEB: Code(2, "%a", params=[P(1)]),
     0xEC: Code(2, "%y", params=[P(1)]),
@@ -796,6 +835,10 @@ formats["sd2"].scanner_loc = 0x300
 formats["sd2"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
                               b"\xAF\xC8\xF0\xD0\xFB\xE8\x00\x8D"
 formats["sd2"].sequence_loc = 0x1B00
+formats["sd2"].brr_table = 0x1A00
+formats["sd2"].env_table = 0x1980
+formats["sd2"].tuning_table = 0x1900
+formats["sd2"].tuning_type = "double"
 formats["sd2"].bytecode[0xFC] = Comment(1, "LoopRestart")
 formats["sd2"].bytecode[0xFD] = Comment(2, "IgnoreMVol prg={}", params=[P(1)])
 formats["sd2"].end_track = [0xF2, 0xFE, 0xFF]
@@ -808,6 +851,10 @@ formats["rs2"].scanner_loc = 0x310
 formats["rs2"].scanner_data = b"\x00\x8D\x0C\x3F\x5C\x06\x8D\x1C" + \
                               b"\x3F\x5C\x06\x8D\x2C\x3F\x5C\x06"
 formats["rs2"].sequence_loc = 0x1D00
+formats["rs2"].brr_table = 0x1C00
+formats["rs2"].env_table = 0x1B80
+formats["rs2"].tuning_table = 0x1B00
+formats["rs2"].tuning_type = "double"
 formats["rs2"].header_type = 4
 formats["rs2"].tempo_scale = (60000 / 216) / 256
 formats["rs2"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "^", "r"]
@@ -927,6 +974,10 @@ formats["fm"].display_name = "AKAO4 / Front Mission"
 formats["fm"].scanner_data = b"\xC7\xE8\x00\x8D\x2C\x3F\x05\x07" + \
                              b"\x8D\x3C\x3F\x05\x07\xCD\x40\xD5"
 formats["fm"].sequence_loc = 0x2100
+formats["fm"].brr_table = 0x1F00
+formats["fm"].env_table = 0x2080
+formats["fm"].tuning_table = 0x2000
+formats["fm"].tuning_type = "double"
 formats["fm"].percussion_table_loc = 0xF220
 formats["fm"].use_expression = True
 formats["fm"].tempo_scale = (60000 / 252) / 256
@@ -957,6 +1008,10 @@ formats["sd3"].scanner_data = b"\xFF\xBD\x3F\x0A\x03\x8F\x00\xF6" + \
                               b"\x8F\x02\xF7\xC4\xF4\xC4\xF5\xE4"
 formats["sd3"].sequence_loc = 0x2100
 formats["sd3"].program_map_loc = 0x5F80
+formats["sd3"].brr_table = 0x5F00
+formats["sd3"].env_table = 0x6040
+formats["sd3"].tuning_table = 0x6080
+formats["sd3"].tuning_type = "suzuki"
 formats["sd3"].header_type = 5
 formats["sd3"].sequence_relative = False
 formats["sd3"].tempo_scale = 1
@@ -1045,6 +1100,10 @@ formats["rs3"].display_name = "AKAO4 / Romancing SaGa 3"
 formats["rs3"].scanner_data = b"\xBC\x8D\x2C\x3F\x97\x07\x8D\x3C" + \
                               b"\x3F\x97\x07\xCD\x40\xD5\x68\xF1"
 formats["rs3"].sequence_loc = 0x2300
+formats["rs3"].brr_table = 0x2100
+formats["rs3"].env_table = 0x2280
+formats["rs3"].tuning_table = 0x2200
+formats["rs3"].tuning_type = "double"
 formats["rs3"].tempo_scale = 1
 formats["rs3"].tempo_mode = "simple"
 formats["rs3"].bytecode[0xF4] = ExpressionCode(2, "{e}", params=[P(1)], expression_param=1)
@@ -1060,6 +1119,10 @@ formats["bs"].display_name = "AKAO4 / BS - DynamiTracer, Treasure Conflix, Koi h
 formats["bs"].scanner_data = b"\xC4\x8D\x2C\x3F\x1F\x08\x8D\x3C" + \
                              b"\x3F\x1F\x08\xCD\x40\xD5\x6E\xF1"
 formats["bs"].sequence_loc = 0x2500
+formats["bs"].brr_table = 0x2300
+formats["bs"].env_table = 0x2480
+formats["bs"].tuning_table = 0x2400
+formats["bs"].tuning_type = "double"
 formats["bs"].bytecode[0xFD] = Comment(2, "FD {}", params=[P(1)])
 formats["bs"].bytecode[0xFE] = Comment(1, "FE")
 formats["bs"].end_track = [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFF]
@@ -1073,6 +1136,10 @@ formats["bl"].scanner_loc = 0x310
 formats["bl"].scanner_data = b"\xFF\xBD\x3F\x11\x03\x8F\x00\xF6" + \
                              b"\x8F\x02\xF7\xC4\xF4\xC4\xF5\xE4"
 formats["bl"].program_map_loc = 0x5780
+formats["bl"].brr_table = 0x5700
+formats["bl"].env_table = 0x5840
+formats["bl"].tuning_table = 0x5880
+formats["bl"].tuning_type = "suzuki"
 formats["bl"].header_type = 6
 formats["bl"].program_base = 0x8
 formats["bl"].note_increment_custom_duration = False
@@ -1095,6 +1162,10 @@ formats["gh"].display_name = "AKAO4 / Front Mission: Gun Hazard"
 formats["gh"].scanner_data = b"\xC4\x8D\x2C\x3F\x40\x07\x8D\x3C" + \
                              b"\x3F\x40\x07\xCD\x40\xD5\x6E\xF8"
 formats["gh"].sequence_loc = 0x2300
+formats["gh"].brr_table = 0x2100
+formats["gh"].env_table = 0x2280
+formats["gh"].tuning_table = 0x2200
+formats["gh"].tuning_type = "double"
 formats["gh"].percussion_table_loc = 0xF920
 formats["gh"].bytecode[0xEB] = Comment(2, "EB {}", params=[P(1)])
 formats["gh"].bytecode[0xFD] = Code(1, ";")
@@ -1110,6 +1181,10 @@ formats["smrpg"].scanner_loc = 0x310
 formats["smrpg"].scanner_data = b"\xFF\xBD\x3F\x1A\x03\x8F\x00\xF6" + \
                                 b"\x8F\x02\xF7\xC4\xF4\xC4\xF5\xE4"
 formats["smrpg"].program_map_loc = 0x4780
+formats["smrpg"].brr_table = 0x4700
+formats["smrpg"].env_table = 0x4840
+formats["smrpg"].tuning_table = 0x4880
+formats["smrpg"].tuning_type = "suzuki"
 formats["smrpg"].program_base = 0xA
 formats["smrpg"].bytecode[0xFC] = Comment(4, "FC {} {} {}", params=[P(1), P(2), P(3)])
 formats["smrpg"].bytecode[0xFD] = Code(1, "<")
@@ -1117,14 +1192,18 @@ formats["smrpg"].bytecode[0xFE] = Comment(1, "FE")
 formats["smrpg"].bytecode[0xFF] = Code(1, "<")
 formats["smrpg"].octave_up = [0xC4, 0xFD, 0xFF]
                        
-## ## ## KAWAKAMI ## ## ##
+## ## ## ????? ## ## ##
 
         # RUDRA NO HIHOU #
-formats["rnh"] = Format("17", "rnh", "KAWAKAMI / Rudra no Hihou (Treasure of the Rudras)")
+formats["rnh"] = Format("17", "rnh", "Rudra no Hihou (Treasure of the Rudras)")
 formats["rnh"].scanner_loc = 0x300
 formats["rnh"].scanner_data = b"\x5D\x3E\xF4\xF0\xFC\xF8\xF4\x30" + \
                               b"\x03\x1F\x85\x03\x1F\x05\x03\xBA"
 formats["rnh"].sequence_loc = 0x100 #dynamic location
+formats["rnh"].brr_table = 0x1C00
+formats["rnh"].env_table = 0x1F60
+formats["rnh"].tuning_table = 0x1E40
+formats["rnh"].tuning_type = "rudra"
 formats["rnh"].header_type = 7
 formats["rnh"].use_expression = True
 formats["rnh"].tempo_scale = 1 #unknown
@@ -1134,6 +1213,7 @@ formats["rnh"].low_octave_notes = range(0x30,0x90)
 formats["rnh"].dynamic_note_duration = True
 formats["rnh"].first_note_id = 0x30
 formats["rnh"].zero_loops_infinite = True
+formats["rnh"].base_octave = 6
 formats["rnh"].bytecode = {
     0x00: Code(1, ";"),
     0x01: Code(2, "%x", params=[P(1)]),
@@ -1247,8 +1327,8 @@ def register_notes():
         multiplier = len(format.duration_table)
         for i, note in enumerate(format.note_table):
             for j, dur in enumerate(format.duration_table):
-                if format.dynamic_note_duration == True: #kawakami
-                    format.bytecode[i * multiplier + j + format.first_note_id] = KawakamiNote(i, j)
+                if format.dynamic_note_duration == True: #rudra
+                    format.bytecode[i * multiplier + j + format.first_note_id] = RudraNote(i, j)
                 else: #akao
                     format.bytecode[i * multiplier + j + format.first_note_id] = Note(i, dur)
            
@@ -1286,7 +1366,66 @@ def calculate_forced_percussion():
         
         symbol_idx += 1
     return defs
-                
+
+def create_program_declaration(slot, brrid):
+    if not CONFIG_EXTRACT_BRR:
+        return f"#WAVE 0x{slot:02X} 0x00"
+    else:
+        addr = int.from_bytes(inst_data_addr[brrid*4 : brrid*4 + 2], "little")
+        loop = int.from_bytes(inst_data_addr[brrid*4 + 2: brrid*4 + 4], "little")
+        looptext = (loop - addr).to_bytes(2, "little").hex().upper()
+        if format.tuning_type == "single":
+            pitchtext = f"{inst_data_pitch[brrid]:02X}00"
+        elif format.tuning_type == "double":
+            pitchtext = inst_data_pitch[brrid*2 : brrid*2 + 2].hex()
+        elif format.tuning_type == "suzuki":
+            print(f"DEBUG: tuning data for {slot:02X} {brrid:02X} is {inst_data_pitch[brrid*2:brrid*2+2].hex().upper()}")
+            coarse = inst_data_pitch[brrid*2+1]
+            coarse -= 0x100 if coarse >= 0x80 else 0
+            fine = inst_data_pitch[brrid*2] / 256
+            sign = "+" if coarse >= 0 else ""
+            pitchtext = f"{sign}{coarse + fine:.3f}"
+        elif format.tuning_type == "rudra":
+            pitchscale = int.from_bytes(inst_data_pitch[brrid*2 : brrid*2 + 2], "big", signed=True)
+            pitchscale = (pitchscale / 65536) + 1
+            if pitchscale > 1:
+                pitchscale = (pitchscale - 1) * 2 + 1
+            semitones = (math.log(pitchscale, 10) / math.log(2, 10) * 12) - 3
+            sign = "+" if semitones > 0 else ""
+            pitchtext = f"{sign}{semitones:.3f}"
+        if format.env_table:
+            adsrtext = inst_data_adsr[brrid*2 : brrid*2 + 2].hex().upper()
+        else:
+            adsrtext = "F 7 7 0"
+        
+        brrfile = fn.rpartition('.')[0] + f"_{slot:02X}.brr"
+        return f"#BRR 0x{slot:02X} 0x00; {brrfile}, {looptext}, {pitchtext}, {adsrtext}"
+ 
+def extract_brr(slot, brrid):
+    if CONFIG_EXTRACT_BRR:
+        brr = bytearray()
+        loc = 0x100 + int.from_bytes(inst_data_addr[brrid*4 : brrid*4 + 2], "little")
+        print(f"DEBUG: extracting BRR {slot:02X} / {brrid:02X} at {loc:04X}")
+        while True:
+            try:
+                brr += orig_bin[loc:loc+9]
+            except IndexError:
+                print(f"DEBUG: end of file without END bit ({loc:05X})")
+                break
+            if orig_bin[loc] & 1:   # END bit
+                print(f"DEBUG: end bit at {loc:04X}")
+                break
+            loc += 9
+        
+        brr = len(brr).to_bytes(2, "little") + brr
+        brrfile = fn.rpartition('.')[0] + f"_{slot:02X}.brr"
+        try:
+            with open(brrfile, "wb") as f:
+                f.write(brr)
+            print(f"Wrote sample {slot:02X} to file {brrfile}")
+        except OSError:
+            print(f"ERROR: unable to write sample {slot:02X} ({brrfile})")
+            
 # # # # # HEADER # # # # #
 
 def parse_header(data, loc=0):
@@ -1391,6 +1530,7 @@ def parse_header(data, loc=0):
             #may not work as consistently on spcs ripped from mid song
             #or on unusually formed sequences (i'm assuming 0A as the first
             #command after the header)
+            edl = data[0x1007D]
             sequence_pos = 0xFFFF
             for i in range(8): #track read pointers
                 ii = i*2
@@ -1400,9 +1540,10 @@ def parse_header(data, loc=0):
             found = False
             for i in range(sequence_pos-2, 0xA000, -1):
                 if data[i] in [0x09, 0x0A]:
-                    #17 and 18 bytes before the 09/OA should be <= 8
-                    if data[i-0x11] <= 8 and data[i-0x12] <= 8 and data[i-0x11] > 0 and data[i-0x12] > 0:
-                        print(f"found kawakami sequence starting at {i:04X}")
+                    # 17 bytes before the 09/OA should be <= 8
+                    # 18 before = EDL
+                    if data[i-0x12] == edl and data[i-0x11] <= 8 and data[i-0x11] > 0:
+                        print(f"found rudra sequence starting at {i:04X}")
                         header_start = i-0x12
                         header = data[header_start:header_start+header_length]
                         found = True
@@ -1411,15 +1552,45 @@ def parse_header(data, loc=0):
                 print("sequence scanner method 1 failed, trying another (may false positive)")
                 for i in range(sequence_pos-2, 0xA000, -1):
                     if data[i] == 0x0B:
-                        #17 and 18 bytes before the 0B should be <= 8
-                        if data[i-0x11] <= 8 and data[i-0x12] <= 8 and data[i-0x11] > 0 and data[i-0x12] > 0:
-                            print(f"found kawakami sequence starting at {i:04X}")
+                        # 17 bytes before the 0B should be <= 8
+                        # 18 before = EDL
+                        if data[i-0x12] == edl and data[i-0x11] <= 8 and data[i-0x11] > 0:
+                            print(f"found rudra sequence starting at {i:04X}")
                             header_start = i-0x12
                             header = data[header_start:header_start+header_length]
                             found = True
                             break                
             if not found:
-                print(f"couldn't find kawakami sequence. try extracting it first")
+                print("sequence scanner method 2 failed, trying another (likely to false positive)")
+                for i in range(sequence_pos-18, 0xA000, -1):
+                    # first check theoretical EDL if this is a header
+                    if data[i] != edl:
+                        continue
+                    unknown = data[i+1]
+                    if unknown > 8:
+                        continue
+                    echo_offset = 0xED00 - (edl * 0x800)
+                    # look for any collection of 16 bytes that might be a header
+                    headerish = True
+                    print(f"DELETE THIS potential header: \n    {data[i:i+18].hex().upper()}")
+                    test_rom_offset = int.from_bytes(data[i+2:i+4], "little") - 18
+                    for j in range(8):
+                        word = int.from_bytes(data[i + 2 + j*2:i + 4 + j*2], "little")
+                        word = word - test_rom_offset + i
+                        while word > 0x10000:
+                            word -= 0x10000
+                        while word < 0:
+                            word += 0x10000
+                        if word < i + 18 or word > echo_offset:
+                            headerish = False
+                            break
+                    if headerish:
+                        header = data[i:i+header_length]
+                        header_start = i
+                        print(f"DEBUG found header at {i:04X} :: {header.hex().upper()}")
+                        found = True
+            if not found:
+                print(f"couldn't find rudra sequence. try extracting it first")
                 clean_end()
         else:
             header_start = 0
@@ -1697,7 +1868,7 @@ def trace_segments(data, segs):
                 force_octave_set = False
                 force_volume_set = False
                 
-            #handle weird kawakami duration stuff
+            #handle weird rudra duration stuff
             if format.dynamic_note_duration:
                 if "dur_table" in cmdinfo.type:
                     new_dur_table = cmdinfo.get(cmd, "dur_table")
@@ -1764,7 +1935,7 @@ def trace_segments(data, segs):
                     else:
                         volta_count = cmdinfo.get(cmd, "volta_param")
                     #print(f"{loc:04X}: volta on {volta_count}, currently {counter}")
-                    if counter >= volta_count:
+                    if counter == volta_count:
                         #print(f"jumping to volta at {shift(cmdinfo.dest(cmd)):04X}")
                         do_jump = True
                         if cmd[0] in format.loop_break and iterations > 1:
@@ -1797,7 +1968,7 @@ def trace_segments(data, segs):
                 segs.append(target)
                 add_jump(target)
                 
-            #handle octave-baked-into-note state (kawakami)
+            #handle octave-baked-into-note state (rudra)
             if cmd[0] in format.low_octave_notes:    
                 rel_octave_set(-1)
             elif "note" in cmdinfo.type:
@@ -1991,6 +2162,7 @@ if __name__ == "__main__":
                     print("Invalid format entry '{entry}'")
     
     CONFIG_IGNORE_FIRST_BYTES = 0
+    CONFIG_EXTRACT_BRR = False
     CONFIG_USE_PROGRAM_MACROS = True
     CONFIG_USE_VOLUME_MACROS = True
     CONFIG_USE_OCTAVE_MACROS = True
@@ -2020,6 +2192,7 @@ if __name__ == "__main__":
         print()
         entry = input(">").strip()
         if entry and entry[0] == '?':
+            print("    b - extract BRR samples from SPC, if possible")
             print("    dp - sort definitions by program number, excluding #WAVE (default)")
             print("    dt - sort definitions by definition type")
             print("    dw - sort definitions by program number, including #WAVE")
@@ -2054,6 +2227,8 @@ if __name__ == "__main__":
             elif option[0] in options_str:
                 val = option[1:]
             
+            if option[0] == 'b':
+                CONFIG_EXTRACT_BRR = True
             if option[0] == 'd':
                 if val == 't':
                     CONFIG_DEF_SORT_MODE = "type"
@@ -2108,6 +2283,11 @@ if __name__ == "__main__":
     dynamic_note_durations = {}
     note_tables = {}
     append_before_items = {}
+    inst_data_addr = b""
+    inst_data_pitch = b""
+    inst_data_adsr = b""
+    inst_data_brr = {}
+    orig_bin = b""
     program_map_data = b""
     program_mappings = {}
     sample_mappings = {}
@@ -2127,11 +2307,18 @@ if __name__ == "__main__":
             percussion_data = bin[format.percussion_table_loc:format.percussion_table_loc+0x24]
         if format.program_map_loc is not None:
             program_map_data = bin[format.program_map_loc:format.program_map_loc+0x80]
-        
+        if CONFIG_EXTRACT_BRR:
+            inst_data_addr = bin[format.brr_table:format.brr_table+format.brr_table_size]
+            inst_data_pitch = bin[format.tuning_table:format.tuning_table + 0x60]
+            if format.env_table:
+                inst_data_adsr = bin[format.env_table:format.env_table + 0x60]
+            print(inst_data_addr.hex())
+    
+    orig_bin = bin
     bin = bin[origin:]
     tracks, shift_amount, end, header_start, header_length = parse_header(bin)
     
-    if header_start: #kawakami
+    if header_start: #rudra
         bin = bin[header_start:end]
     elif format.sequence_relative: #akao3, akao4
         bin = bin[:shift(end)]
