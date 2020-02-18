@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-VERSION = "beta 1.1.0"
+VERSION = "beta 1.1.1"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -428,6 +428,7 @@ class VolumeCode(Code):
                 
             if loc in volume_locs:
                 progval = volume_locs[loc][0]
+                volume = volume_locs[loc][1]
             else:
                 progval = None
             text = write_volume_macro(progval, volume, env=env, loc=loc)
@@ -1805,13 +1806,13 @@ def trace_segments(data, segs):
                 volume = cmdinfo.get(cmd, 'volume_param')
                 block_volume_cmds.append((loc, adjusted_volume()))
                 volume_set = True
-                ifprint(f"{loc:04X}: set volume to {volume}", DEBUG_STATE_VERBOSE)
+                ifprint(f"{loc:04X}: set volume to {volume} ({adjusted_volume()})", DEBUG_STATE_VERBOSE)
                 #volume_locs[loc] = program
             elif cmdinfo.type == "expression":
                 expression = cmdinfo.get(cmd, 'expression_param')
                 block_volume_cmds.append((loc, adjusted_volume()))
                 volume_set = True
-                ifprint(f"{loc:04X}: set expression to {expression}", DEBUG_STATE_VERBOSE)
+                ifprint(f"{loc:04X}: set expression to {expression} ({adjusted_volume()})", DEBUG_STATE_VERBOSE)
             elif cmdinfo.type == "octave":
                 octave = cmdinfo.get(cmd, 'octave_param')
                 block_octave_cmds.append(loc)
