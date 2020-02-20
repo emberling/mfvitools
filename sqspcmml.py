@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-VERSION = "beta 1.1.1"
+VERSION = "beta 1.1.2"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -1573,7 +1573,6 @@ def parse_header(data, loc=0):
                     echo_offset = 0xED00 - (edl * 0x800)
                     # look for any collection of 16 bytes that might be a header
                     headerish = True
-                    print(f"DELETE THIS potential header: \n    {data[i:i+18].hex().upper()}")
                     test_rom_offset = int.from_bytes(data[i+2:i+4], "little") - 18
                     for j in range(8):
                         word = int.from_bytes(data[i + 2 + j*2:i + 4 + j*2], "little")
@@ -1588,7 +1587,7 @@ def parse_header(data, loc=0):
                     if headerish:
                         header = data[i:i+header_length]
                         header_start = i
-                        print(f"DEBUG found header at {i:04X} :: {header.hex().upper()}")
+                        print(f"found rudra sequence starting at {i:04X}")
                         found = True
             if not found:
                 print(f"couldn't find rudra sequence. try extracting it first")
@@ -1730,11 +1729,12 @@ def trace_segments(data, segs):
                 if cmdinfo.type == "program":
                     if cmdinfo.get(cmd) != program:
                         force_perc_state = "on" if cmdinfo.get(cmd) in forced_percussion_prgs else "off"
-                if program in forced_percussion_prgs and cmdinfo.type == "note" and cmdinfo.percid is not None:
-                    if (program, octave, cmdinfo.percid) not in forced_percussion_locs:
-                        forced_percussion_locs[(program, octave, cmdinfo.percid)] = set()
-                    forced_percussion_locs[(program, octave, cmdinfo.percid)].add(loc)
-                                            
+                if program in forced_percussion_prgs:
+                    if cmdinfo.type == "note" and cmdinfo.percid is not None:
+                        if (program, octave, cmdinfo.percid) not in forced_percussion_locs:
+                            forced_percussion_locs[(program, octave, cmdinfo.percid)] = set()
+                        forced_percussion_locs[(program, octave, cmdinfo.percid)].add(loc)
+                                                
             #handle percussion
             if "PercOn" in cmdinfo.type or force_perc_state == "on":
                 percussion = True
@@ -1853,7 +1853,7 @@ def trace_segments(data, segs):
                 #handle alligator redundancy
                 if CONFIG_REMOVE_REDUNDANT_OCTAVES:
                     for roloc, _ in block_octave_rel.items():
-                        if octave_set:
+                        if octave_set or percussion:
                             if roloc not in redundant_items:
                                 redundant_items[roloc] = True
                         else:
