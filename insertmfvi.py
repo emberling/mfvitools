@@ -939,7 +939,7 @@ if __name__ == "__main__":
         #    -- Sequence data overflow
         #    -- Sample overflow in sequence
         if len(seq.sequence) >= 0x1002:
-            print("WARNING: seq {id:02X} ({seq.filename}) is {len(seq.sequence):04} bytes")
+            print(f"WARNING: seq {id:02X} ({seq.filename}) is {len(seq.sequence):04X} bytes")
         brr_blocks_used = 0
         for i in range(16):
             try:
