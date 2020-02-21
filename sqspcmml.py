@@ -826,6 +826,8 @@ formats["ff5"].scanner_loc = 0x300
 formats["ff5"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
                               b"\xAF\xC8\xF0\xD0\xFB\x1A\xEB\xE8"
 formats["ff5"].header_type = 3
+formats["ff5"].volta_jump = []
+formats["ff5"].loop_break = [0xF9]
 
         # SEIKEN DENSETSU 2 #
 formats["sd2"] = copy.deepcopy(formats["ff5"])
@@ -1939,7 +1941,7 @@ def trace_segments(data, segs):
                     if counter == volta_count:
                         #print(f"jumping to volta at {shift(cmdinfo.dest(cmd)):04X}")
                         do_jump = True
-                        if cmd[0] in format.loop_break and iterations > 1:
+                        if cmd[0] in format.loop_break and volta_count > 1:
                             loop_stack.pop()
                         
             #do stuff if it's a jump or end
