@@ -5,6 +5,8 @@ DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
 DEBUG_JUMP_VERBOSE = False
 DEBUG_STATE_VERBOSE = False
+DEBUG_STATE_EXTRA_VERBOSE = False
+DEBUG_BLOCK_VERBOSE = False
 DEBUG_PERC_VERBOSE = False
 DEBUG_WRITE_VERBOSE = False
 
@@ -374,12 +376,12 @@ class OctaveCode(Code):
         
     def write(self, cmd, loc):
         if CONFIG_USE_OCTAVE_MACROS:
-            octave = self.params[self.octave_param](cmd)
             
             if loc in octave_locs:
-                progval = octave_locs[loc][0]
+                progval, octave = octave_locs[loc]
             else:
                 progval = None
+                octave = self.params[self.octave_param](cmd)
             text = write_octave_macro(progval, octave, loc)
         else:
             text = Code.write(self, cmd, loc)
@@ -1839,10 +1841,12 @@ def trace_segments(data, segs):
             elif cmd[0] in format.octave_up and octave:
                 block_octave_rel[loc] = cmd
                 octave += 1
+                ifprint(f"{loc:04X}: raised octave to {octave}", DEBUG_STATE_EXTRA_VERBOSE)
             elif cmd[0] in format.octave_down and octave:
                 block_octave_rel[loc] = cmd
                 octave -= 1
-
+                ifprint(f"{loc:04X}: lowered octave to {octave}", DEBUG_STATE_EXTRA_VERBOSE)
+                
             if cmd[0] in flowctrl_cmds:
                 block_flowctrl_cmds.append(loc)
                 
@@ -1868,6 +1872,7 @@ def trace_segments(data, segs):
                 if CONFIG_USE_OCTAVE_MACROS:
                     for oloc in block_octave_cmds:
                         octave_locs[oloc] = program, octave
+                        ifprint(f"{loc:04X}: static block: writing octave {octave} at {oloc:04X}", DEBUG_BLOCK_VERBOSE)
                 #handle alligator redundancy
                 if CONFIG_REMOVE_REDUNDANT_OCTAVES:
                     for roloc, _ in block_octave_rel.items():
@@ -1876,6 +1881,13 @@ def trace_segments(data, segs):
                                 redundant_items[roloc] = True
                         else:
                             redundant_items[roloc] = False
+                #debug
+                if block_volume_cmds:
+                    ifprint(f"{loc:04X}: static block volume: {[f'{c[0]:04X} {c[1]}' for c in block_volume_cmds]}", DEBUG_BLOCK_VERBOSE)
+                if block_octave_cmds:
+                    ifprint(f"{loc:04X}: static block octave ({octave}): {[f'{c:04X}' for c in block_octave_cmds]}", DEBUG_BLOCK_VERBOSE)
+                if block_flowctrl_cmds:
+                    ifprint(f"{loc:04X}: static block flow control: {[f'{c:04X} {data[c]:02X}' for c in block_flowctrl_cmds]}", DEBUG_BLOCK_VERBOSE)
                         
                 #reset static-block counters
                 block_flowctrl_cmds = []
