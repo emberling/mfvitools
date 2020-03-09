@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-VERSION = "beta 1.1.2"
+VERSION = "beta 1.1.3"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -1539,18 +1539,29 @@ def parse_header(data, loc=0):
                 ii = i*2
                 pos = int.from_bytes(data[0x1F+ii:0x1F+ii+2], "little")
                 sequence_pos = min(pos, sequence_pos)
-            #look for 0A or 09 (note table, usually first thing in sequence)
             found = False
-            for i in range(sequence_pos-2, 0xA000, -1):
-                if data[i] in [0x09, 0x0A]:
-                    # 17 bytes before the 09/OA should be <= 8
-                    # 18 before = EDL
-                    if data[i-0x12] == edl and data[i-0x11] <= 8 and data[i-0x11] > 0:
-                        print(f"found rudra sequence starting at {i:04X}")
-                        header_start = i-0x12
-                        header = data[header_start:header_start+header_length]
-                        found = True
-                        break
+            #look in user-supplied location, if any
+            if force_rudra_seq_offset:
+                i = force_rudra_seq_offset
+                if data[i] == edl:
+                    print(f"found specified rudra sequence starting at {i:04X}")
+                    header_start = i
+                    header = header = data[header_start:header_start+header_length]
+                    found = True
+                else:
+                    print(f"specified sequence location failed sanity check (EDL = {edl}, first byte = {data[i]:02X})")
+            #look for 0A or 09 (note table, usually first thing in sequence)
+            if not found:
+                for i in range(sequence_pos-2, 0xA000, -1):
+                    if data[i] in [0x09, 0x0A]:
+                        # 17 bytes before the 09/OA should be <= 8
+                        # 18 before = EDL
+                        if data[i-0x12] == edl and data[i-0x11] <= 8 and data[i-0x11] > 0:
+                            print(f"found rudra sequence starting at {i:04X}")
+                            header_start = i-0x12
+                            header = data[header_start:header_start+header_length]
+                            found = True
+                            break
             if not found:
                 print("sequence scanner method 1 failed, trying another (may false positive)")
                 for i in range(sequence_pos-2, 0xA000, -1):
@@ -1569,14 +1580,15 @@ def parse_header(data, loc=0):
                     # first check theoretical EDL if this is a header
                     if data[i] != edl:
                         continue
-                    unknown = data[i+1]
-                    if unknown > 8:
+                    num_tracks = data[i+1]
+                    if num_tracks > 8:
                         continue
                     echo_offset = 0xED00 - (edl * 0x800)
+                    header_length = 2 + num_tracks * 2
                     # look for any collection of 16 bytes that might be a header
                     headerish = True
                     test_rom_offset = int.from_bytes(data[i+2:i+4], "little") - 18
-                    for j in range(8):
+                    for j in range(num_tracks):
                         word = int.from_bytes(data[i + 2 + j*2:i + 4 + j*2], "little")
                         word = word - test_rom_offset + i
                         while word > 0x10000:
@@ -1598,12 +1610,14 @@ def parse_header(data, loc=0):
             header_start = 0
             header = data[0:header_length]
             
-            
         edl = header[0]
+        num_tracks = header[1]
+        header_length = 2 * num_tracks + 2
+        print(f"found {num_tracks} tracks")
         echo_buffer_size = edl * 0x800
         end = 0xED00 - echo_buffer_size
         first_track = 0xFFFF
-        for i in range(1,9):
+        for i in range(1,num_tracks+1):
             ii = i*2
             track_start = int.from_bytes(header[ii:ii+2], "little")
             first_track = min(first_track, track_start)
@@ -1739,6 +1753,8 @@ def trace_segments(data, segs):
                                                 
             #handle percussion
             if "PercOn" in cmdinfo.type or force_perc_state == "on":
+                if "PercOn" in cmdinfo.type:
+                    program = None
                 percussion = True
                 percussion_state = None
                 ifprint(f"{loc:04X}: PercOn - {' '.join([f'{b:02X}' for b in cmd])} - p {percussion} ps {percussion_state} pm {percussion_marked}", DEBUG_PERC_VERBOSE)
@@ -2173,6 +2189,7 @@ if __name__ == "__main__":
     CONFIG_REMOVE_REDUNDANT_OCTAVES = True
     CONFIG_DEF_SORT_MODE = "program"
     forced_percussion_prgs = set()
+    force_rudra_seq_offset = False
     
     #attempt to autodetect 2-byte rom header (akao4 only, for ff6hacking song data page compatibility)
     if not spc_mode and "AKAO4" in format.display_name:
@@ -2205,6 +2222,7 @@ if __name__ == "__main__":
             print("    mo - disable converting octave set commands to macros")
             print("    o - preserve all octave up/down commands, even if redundant")
             print("    pXX - treat notes with program XX (hex) as percussion notes")
+            print("    sXXXX - specify sequence offset (hex) in SPC (for rudra)")
             print("    t - use ties instead of & for rendering three-byte notes")
             print()
             print("for example, if you want something closer to a byte-accurate conversion while sacrificing")
@@ -2215,7 +2233,7 @@ if __name__ == "__main__":
             continue
     
         options = entry.split(' ')
-        options_hex_int = ['h', 'p']
+        options_hex_int = ['h', 'p', 's']
         options_str = ['d', 'm']
         for option in options:
             if not len(option):
@@ -2263,6 +2281,9 @@ if __name__ == "__main__":
             elif option[0] == 'p':
                 forced_percussion_prgs.add(val)
                 print(f"{option}: adding program 0x{val:02X} notes as percussion notes")
+            elif option[0] == 's':
+                force_rudra_seq_offset = val
+                print(f"{option}: looking for sequence at offset {val:04X} (only valid in rudra format)")
             elif option[0] == 't':
                 CONFIG_EXPAND_NOTES_TO_THREE = True
                 print(f"{option}: using ties instead of & for three-byte note durations")
