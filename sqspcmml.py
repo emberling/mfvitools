@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-VERSION = "beta 1.1.3"
+VERSION = "beta 1.1.4"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -1835,7 +1835,7 @@ def trace_segments(data, segs):
                 ifprint(f"{loc:04X}: set expression to {expression} ({adjusted_volume()})", DEBUG_STATE_VERBOSE)
             elif cmdinfo.type == "octave":
                 octave = cmdinfo.get(cmd, 'octave_param')
-                block_octave_cmds.append(loc)
+                block_octave_cmds.append((loc, octave))
                 octave_set = True
                 ifprint(f"{loc:04X}: set octave to {octave}", DEBUG_STATE_VERBOSE)
             elif cmd[0] in format.octave_up and octave:
@@ -1863,29 +1863,34 @@ def trace_segments(data, segs):
                     if not octave_set and not percussion:
                         octave_set = True
                         try:
-                            block_octave_cmds.append(block_flowctrl_cmds[force_octave_set])
+                            block_octave_cmds.append((block_flowctrl_cmds[force_octave_set], octave))
                         except IndexError:
-                            block_octave_cmds.append(loc)
+                            block_octave_cmds.append((loc, octave))
                 if CONFIG_USE_VOLUME_MACROS:
                     for vloc, vol in block_volume_cmds:
                         volume_locs[vloc] = program, vol
                 if CONFIG_USE_OCTAVE_MACROS:
-                    for oloc in block_octave_cmds:
-                        octave_locs[oloc] = program, octave
-                        ifprint(f"{loc:04X}: static block: writing octave {octave} at {oloc:04X}", DEBUG_BLOCK_VERBOSE)
+                    for oloc, oct in block_octave_cmds:
+                        octave_locs[oloc] = program, oct
+                        ifprint(f"{loc:04X}: static block: writing octave {oct} at {oloc:04X}", DEBUG_BLOCK_VERBOSE)
                 #handle alligator redundancy
                 if CONFIG_REMOVE_REDUNDANT_OCTAVES:
                     for roloc, _ in block_octave_rel.items():
-                        if octave_set or percussion:
+                        # always redundant if percussion
+                        if percussion:
                             if roloc not in redundant_items:
                                 redundant_items[roloc] = True
+                        # don't force redundancy if octave is set, too many side effects (would be nice to get this working someday)
+                        elif octave_set:
+                            pass
+                        # force keep alligators if no octave is set
                         else:
                             redundant_items[roloc] = False
                 #debug
                 if block_volume_cmds:
                     ifprint(f"{loc:04X}: static block volume: {[f'{c[0]:04X} {c[1]}' for c in block_volume_cmds]}", DEBUG_BLOCK_VERBOSE)
                 if block_octave_cmds:
-                    ifprint(f"{loc:04X}: static block octave ({octave}): {[f'{c:04X}' for c in block_octave_cmds]}", DEBUG_BLOCK_VERBOSE)
+                    ifprint(f"{loc:04X}: static block octave ({octave}): {[f'{c[0]:04X} {c[1]}' for c in block_octave_cmds]}", DEBUG_BLOCK_VERBOSE)
                 if block_flowctrl_cmds:
                     ifprint(f"{loc:04X}: static block flow control: {[f'{c:04X} {data[c]:02X}' for c in block_flowctrl_cmds]}", DEBUG_BLOCK_VERBOSE)
                         
