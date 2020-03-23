@@ -418,15 +418,18 @@ if __name__ == "__main__":
     ingroup.add_argument('-B', '--brrcount', default="0x3F", help="define number of instruments contained in source ROM (default: %(default)s)", metavar="NN")
     filegroup.add_argument('-s', '--brrpath', default="", help="define base path for samples loaded from import list files")
     filegroup.add_argument('-p', '--seqpath', default="", help="define base path for sequences loaded from import list files")
+    filegroup.add_argument('-d', '--dump-brr', action="store_true", help="dump all samples in final ROM and create a list file for them")
     
     def print_no_file_selected_help():
         print("No actions selected!")
-        print("You must specify at least one file to import.")
-        print("Options:")
+        print("You must specify at least one file to import or action to take.")
+        print("File import options:")
         print("    -l FILENAME             List file with sequences and/or samples")
         print("    -m FILENAME ID          MML file, default variant")
         print("    -m FILENAME?VARIANT ID  MML file, specific variant")
         print("    -r FILENAME ID          Binary sequence file")
+        print("Other actions:")
+        print("    -d                      Dump samples to BRR and list files")
     
     argv = list(sys.argv[1:])
     while not argv:
@@ -436,13 +439,14 @@ if __name__ == "__main__":
     args, unknown = parser.parse_known_args(argv)
     
     while True:
-        if args.listfiles or args.mmlfiles or args.binfiles:
+        if args.listfiles or args.mmlfiles or args.binfiles or args.dump_brr:
             break
         print_no_file_selected_help()
         text_in = input("> ")
         argv += shlex.split(text_in)
         args, unknown = parser.parse_known_args(argv)
-        
+    sequence_import_exists = True if (args.listfiles or args.mmlfiles or args.binfiles) else False
+    
     if args.infile is None:
         print("Enter source ROM filename.")
         print("Default: ff6.smc")
@@ -758,7 +762,7 @@ if __name__ == "__main__":
             
     # Check if sequence or sample tables need to be expanded
     expand_bgm, expand_brr = False, False
-    if max(sequence_defs.keys()) > bgmcount - 1:
+    if sequence_import_exists and max(sequence_defs.keys()) > bgmcount - 1:
         ifprint(f"Sequences will be expanded. (Original sequence count {bgmcount}, new sequence count {max(sequence_defs.keys())+1})", VERBOSE)
         expand_bgm = True
         o = offsets['bgmtable']
@@ -931,6 +935,26 @@ if __name__ == "__main__":
         loc = o_brrtable + (id-1) * 3
         outrom = byte_insert(outrom, loc, to_rom_address(smp.data_location).to_bytes(3, "little"))
         
+    # Dump BRRs
+    if args.dump_brr:
+        print("brr dump test")
+        brrdump_listfile = "[Samples]\n"
+        for id, smp in sample_defs.items():
+            fn = outfile + f"_{id:02X}.brr"
+            try:
+                with open(fn, "wb") as f:
+                    f.write(smp.brr)
+            except OSError:
+                print(f"I/O error: couldn't write to {fn}")
+            brrdump_listfile += f"{id:02X}: {fn}, {smp.loop.hex().upper()}, {smp.tuning.hex().upper()}, {smp.adsr.hex().upper()}\n"
+        fn = outfile + f"_BRRdump.txt"
+        try:
+            with open(fn, "w") as f:
+                f.write(brrdump_listfile)
+            print(f"Wrote BRR dump list to {fn}")
+        except OSError:
+            print(f"I/O error: couldn't write to {fn}")
+            
     # Insert sequences, sequence pointers, and instrument tables
     for id, seq in sequence_defs.items():
         if not seq.sequence:
