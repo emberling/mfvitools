@@ -169,6 +169,7 @@ def parse_brr_tuning(pitchtext):
     pitchtext = pitchtext.strip().lower()
     keytable = {"a": 0, "b": 10, "c": 9, "d": 7, "e": 5, "f": 4, "g": 2}
     semitones = None
+    pitchscale = None
     try:
         match = re.fullmatch("(\\^?)([a-g])([+-]?)\\s?([+-]\\d+)", pitchtext)
         if match:
@@ -194,6 +195,9 @@ def parse_brr_tuning(pitchtext):
         if semitones is not None:
             pitchscale = 10 ** ((semitones / 12) * math.log(2, 10))
             print(f"DEBUG: pitch scale {pitchscale}")
+        elif len(pitchtext) and pitchtext[0] == "*":
+            pitchscale = float(pitchtext[1:])  
+        if pitchscale is not None:
             max_pitchscale = 1.5 - (1 / 65536)
             while pitchscale < 0.5:
                 pitchscale *= 2
