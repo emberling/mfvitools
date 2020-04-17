@@ -142,7 +142,7 @@ def handle_note(key, delta, length, velocity):
     
     state_length = length
     state_delta = delta
-    state_remainder = max(-1, delta - length)
+    state_remainder = max(-1, length - delta)
     if CONFIG_NOTE_LENGTH_COMPENSATION and length - delta <= 3:
         if length / delta >= 0.75:
             length = delta
@@ -187,8 +187,8 @@ def handle_command(cmd, code):
     elif cmd == 0xF6 and format == "S2C":    # detune
         text = f"k{code[2]-0x80}"
         note = get_note_key(state_last_key)
-        if not code[1]:
-            state_retrigger = True
+        #if not code[1]:
+        #    state_retrigger = True
     elif cmd == 0xF7:    # program change
         used_programs.add(code[2])
         text = f"'Prog{code[2]:02X}'"
