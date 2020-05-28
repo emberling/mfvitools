@@ -1350,11 +1350,11 @@ def register_percussion_note(prg=0x2F, key=69, pan=64, symbol=None, id=None, smp
 def calculate_forced_percussion():    
     potential_symbols = string.ascii_lowercase[7:]
     if len(forced_percussion_locs) > len(potential_symbols):
-        potential_symbols += [c + '+' for c in string.ascii_lowercase[7:]]
+        potential_symbols += ''.join([c + '+' for c in string.ascii_lowercase[7:]])
         if len(forced_percussion_locs) > len(potential_symbols):
-            potential_symbols += [c + '-' for c in string.ascii_lowercase[7:]]
+            potential_symbols += ''.join([c + '-' for c in string.ascii_lowercase[7:]])
             if len(forced_percussion_locs) > len(potential_symbols):
-                potential_symbols += [c + '-' for c in string.ascii_lowercase[:7]]
+                potential_symbols += ''.join([c + '-' for c in string.ascii_lowercase[:7]])
     symbol_idx = 0
     
     defs = []
