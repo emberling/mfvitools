@@ -45,6 +45,18 @@ Supports:
   * Radical Dreamers
   * Koi ha Balance
 
+## BRR2SF2
+
+Converts multiple BRR files into a SoundFont2 file for auditioning and testing. Designed to imitate some of BRR's quirks somewhat better than the raw waveform output other programs provide. Semi-accurately imitates SPC700 ADSR envelopes and allows for non-identical loop iterations as occur in some BRRs. All samples receive a vibrato delay of 1 quarter note at 120bpm. Minimum and maximum ranges are defined for each sample based on SPC and engine limits, so you can see which notes are playable and which are not.
+
+Input format is the same as `insertmfvi` sample listfiles, with some additions (which `insertmfvi` will happily ignore): After the ADSR value, put another comma, and the subsequent text will be processed by `brr2sf2`. From here, any text in `{`braces`}` will be ignored; by convention, the size of the sample in blocks is placed in braces here first, though it has no effect on the resulting sf2 file. Any text in `[`brackets`]` will be stripped out and used as an inverse transpose value. In other words: if a sample with the given tuning sounds one octave higher than the actual note played, you may represent this in the listfile as `[+12]`. The sample in the resulting soundfont will then be transposed one octave *down*, so that the note you play now matches the note you hear. After all text in brackets and braces is trimmed out, the remaining text, if any (with leading and trailing whitespace removed), is used as the sample's display name.
+
+On the command line, append `sort` if you want the soundfont to be sorted by size within each bank. Append `id` to add the hex ID of the instrument to its display name.
+
+## SPC2BRRS
+
+Extracts multiple BRR files from an arbitrary SPC file. Should work on more or less any game. Sets up an `insertmfvi` listfile for the samples, with accurate loop points, which can be fed immediately into `brr2sf2`. DOES NOT attempt to tune the samples or apply ADSR other than default; you may wish to tune manually by editing the listfile, re-running `brr2sf2`, and repeating until successful.
+
 ## SXC2MML (experimental folder)
 
 Converts Neverland SFC/S2C format to mfvitools MML format. The conversion is rudimentary and not designed to directly create good-sounding or listenable output. The intended purpose is to use this output - both the MML file itself and a MIDI conversion of it via [vgmtrans](https://github.com/vgmtrans/vgmtrans) - as a reference for manually building a rendition of the song.
