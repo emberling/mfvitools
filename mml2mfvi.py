@@ -861,7 +861,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
     header = int_insert(b"\x00"*0x26, 0, len(data)-2, 2)
     header = int_insert(header, 2, 0x26, 2)
     header = int_insert(header, 4, len(data), 2)
-    for i in range(0,8):
+    for i in range(1,9):
         if i not in channels:
             channels[i] = len(data)
     for k, v in channels.items():
