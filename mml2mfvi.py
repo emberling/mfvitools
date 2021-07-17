@@ -1,7 +1,36 @@
 #!/usr/bin/env python3
 
+# MML2MFVI - convert human-writable / macro-enabled MML files to
+# BGM sequence data formatted for Final Fantasy VI
+
+# *** READ THIS BEFORE EDITING THIS FILE ***
+
+# This file is part of the mfvitools project.
+# ( https://github.com/emberling/mfvitools )
+# mfvitools is designed to be used inside larger projects, e.g.
+# johnnydmad, Beyond Chaos, Beyond Chaos Gaiden, or potentially
+# others in the future.
+# If you are editing this file as part of "johnnydmad," "Beyond Chaos,"
+# or any other container project, please respect the independence
+# of these projects:
+# - Keep mfvitools project files in a subdirectory, and do not modify
+#   the directory structure or mix in arbitrary code files specific to
+#   your project.
+# - Keep changes to mfvitools files in this repository to a minimum.
+#   Don't make style changes to code based on the standards of your
+#   containing project. Don't remove functionality that you feel your
+#   containing project won't need. Keep it simple so that code and
+#   changes can be easily shared across projects.
+# - Major changes and improvements should be handled through, or at
+#   minimum shared with, the mfvitools project, whether through
+#   submitting changes or through creating a fork that other mfvitools
+#   maintainers can easily see and pull from.
+
 import sys, os, re, traceback, copy, math
-from mmltbl import *
+try:
+    from mmltbl import *
+except ImportError:
+    from .mmltbl import *
 
 mml_log = "\n" if __name__ == "__main__" else None
 
@@ -14,7 +43,6 @@ def byte_insert(data, position, newdata, maxlength=0, end=0):
         newdata = newdata[:maxlength]
     return data[:position] + newdata + data[position+len(newdata):]
 
-    
 def int_insert(data, position, newdata, length, reversed=True):
     n = int(newdata)
     l = []
@@ -94,7 +122,30 @@ def get_variant_list(mml, sfxmode=False):
     if not variants:
         variants['_default_'] = ''.join([c for c in all_delims])
     return variants
-        
+    
+def get_echo_delay(mml, variant=None):
+    variants = get_variant_list(mml)
+    if not variant:
+        variant = "_default_"
+    vtokens = variants[variant]
+    for line in mml:
+        if line.upper().startswith("#EDL") and len(line) > 4:
+            line = line[4:]
+            for c in vtokens:
+                if c in line:
+                    line = re.sub(re.escape(c)+'.*?'+re.escape(c), '', line)
+            line = re.sub('[^0-9]+', '', line)
+            try:
+                num = int(line)
+            except ValueError:
+                print(f"Invalid EDL value [{line}]")
+                return None
+            if num > 15:
+                print(f"EDL value too high ({num}) -- max is 15")
+                return None
+            return num
+    return None
+                        
 def get_brr_imports(mml, variant=None):
     variants = get_variant_list(mml)
     if variant not in variants:
@@ -104,12 +155,18 @@ def get_brr_imports(mml, variant=None):
 
     brr_import_info = {}
     vtokens = variants[variant]
+    try: #if it's not a list of lines, we need it to be one
+        mml = mml.split('\n')
+    except AttributeError: 
+        pass
     for line in mml:
         if line.upper().startswith("#BRR") and len(line) > 4:
             line = line[4:]
             for c in vtokens:
-                if c in line:
-                    line = re.sub(re.escape(c)+'.*?'+re.escape(c), '', line)
+                spline = line.split(';')
+                if c in spline[0]:
+                    spline[0] = re.sub(re.escape(c)+'.*?'+re.escape(c), '', spline[0])
+                line = ';'.join(spline)
             if ';' in line:
                 prog, _, meta = line.partition(';')
             
@@ -188,23 +245,23 @@ def parse_brr_tuning(pitchtext):
             elif mod == "-":
                 semitones += 1
             semitones -= (cents/100)
-            print(f"DEBUG: tuning '{pitchtext}' -> {semitones} st")
+            #print(f"DEBUG: tuning '{pitchtext}' -> {semitones} st")
         if semitones is None and len(pitchtext):
             if pitchtext[0] in ["+", "-"]:
                 semitones = float(pitchtext)
         if semitones is not None:
             pitchscale = 10 ** ((semitones / 12) * math.log(2, 10))
-            print(f"DEBUG: pitch scale {pitchscale}")
+            #print(f"DEBUG: pitch scale {pitchscale}")
         elif len(pitchtext) and pitchtext[0] == "*":
             pitchscale = float(pitchtext[1:])  
         if pitchscale is not None:
             max_pitchscale = 1.5 - (1 / 65536)
             while pitchscale < 0.5:
                 pitchscale *= 2
-                print(f"DEBUG: pitch scale too low, raising octave")
+                #print(f"DEBUG: pitch scale too low, raising octave")
             while pitchscale > max_pitchscale:
                 pitchscale /= 2
-                print(f"DEBUG: pitch scale too high, lowering octave")
+                #print(f"DEBUG: pitch scale too high, lowering octave")
             pitchval = int((pitchscale * 65536) - 65536)
             bytepitch = pitchval.to_bytes(2, "big", signed=True)
         else:
@@ -238,7 +295,7 @@ def parse_brr_env(envtext):
         print(f"PARSEBRRINFO: bad adsr data formatting ({envtext}), defaulting to a15d7s7r0")
     return byteenv
     
-def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
+def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None, inst_only=False):
     #preprocessor
     #returns dict of (data, inst) tuples (4096, 32 bytes max)
     #one generated for each #VARIANT directive
@@ -283,7 +340,9 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
                     if c in line:
                         line = re.sub(re.escape(c)+'.*?'+re.escape(c), '', line)
             uline = line.upper()
-            if uline.startswith("#BRR") and len(line) > 4:
+            if uline.startswith("#BRR") and len(line) > 4 and not inst_only:
+                # skipping this in inst_only because it'll be overwritten anyway so
+                # will produce false positives wrt inst_only's use case
                 line = line[4:].partition(';')[0]
                 line = "#WAVE " + line
                 uline = line.upper()
@@ -313,6 +372,12 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None):
             raw_iset = byte_insert(raw_iset, (slot - 0x20)*2, bytes([inst]))
         isets[k] = raw_iset
                 
+    #return if only parsing for inst
+    if inst_only:
+        if variant in variants:
+            return isets[variant]
+        else:
+            return isets
             
     #generate data
     datas = {}
@@ -486,7 +551,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
     
     while len(m):
         command = m.pop(0)
-        
+                        
         #single character macros
         if command in cdefs:
             repl = list(cdefs[command] + " ")
@@ -543,6 +608,8 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                     if "o0" in state:
                         state["o0"] -= len(co)
             while len(dms):
+                if "m0,0" in state:
+                    state.pop("m0,0", None)
                 dcom = dms.pop(0)
                 if len(dms):
                     if dms[0] in "+-":
