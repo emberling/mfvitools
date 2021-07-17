@@ -35,7 +35,7 @@ CONFIG = configparser.RawConfigParser({
 freespace = None
 spoiler = {}
 
-MAX_BLOCKS = 3746
+MAX_BLOCKS_BASE = 3746
 EDL_OFFSET = 0x5076A
 
 class Sequence():
@@ -50,6 +50,7 @@ class Sequence():
         self.sfxfile = None
         self.spcrip = False
         self.imports = {}
+        self.edl = edl
         
     def init_from_bin(self, fn):
         self.filename = fn
@@ -151,6 +152,9 @@ class Sequence():
                 if self.imports:
                     print(f"DEBUG: got imports {self.imports} for {self.filename}")
                 self.sequence, self.inst = mml2mfvi.mml_to_akao(self.mml, self.filename, variant=v)
+                self.edl = mml2mfvi.get_echo_delay(self.mml, variant=v)
+                if self.edl is None:
+                    self.edl = edl
             
 class Sample():
     def __init__(self):
@@ -226,7 +230,17 @@ class Sample():
                         brr = f.read()
                         self.filename += ".brr"
                 except FileNotFoundError:
-                    print(f"LOADBRR: couldn't open file {self.filename}")
+                    try:
+                        with open(self.filename.strip(), "rb") as f:
+                            brr = f.read()
+                            self.filename = self.filename.strip()
+                    except FileNotFoundError:
+                        try:
+                            with open(self.filename.strip() + ".brr", "rb") as f:
+                                brr = f.read()
+                                self.filename = self.filename.strip() + ".brr"
+                        except:
+                            print(f"LOADBRR: couldn't open file {self.filename}")
             if brr:
                 if len(brr) % 9 == 2:
                     header = brr[0:2]
@@ -390,6 +404,86 @@ def repr_freespace():
         text += f"{f[0]:06X} - {f[1]:06X} (0x{f[1]-f[0]:X}), "
     return text.rpartition(',')[0]
     
+### Testing ASM hack from Myria for per-song EDL loading
+def load_edl_hack(outrom):
+    global edl_table_address
+    
+    edl_table = bytes([edl]) * 256
+    outrom, edl_table_address, _ = put_somewhere(outrom, edl_table, "EDL Table")
+    
+    hack = b"\xE2\x30\x9C\x43\x21\x9C\x42\x21\xA6\x01\xBF" + to_rom_address(edl_table_address).to_bytes(3, "little") +  b"\xC2\x10\x8D\x41\x21\xA9\xFC\x8D\x40\x21\xCD\x40\x21\xD0\xFB\x1A\x29\x7F\x85\x1E\xA5\x02\x5C\xA8\x01\xC5"
+    outrom, hack_address, _ = put_somewhere(outrom, hack, "EDL Table Hack Code")
+    hook = b"\x5C" + to_rom_address(hack_address).to_bytes(3, "little")
+    hook_address = 0x501A4
+    
+    outrom = byte_insert(outrom, hook_address, hook)
+    
+    print(f"Myria's EDL Table hack: code is at {hack_address:06X}, table is at {edl_table_address:06X}")
+    
+    return outrom
+    
+### Testing basic ASM hack to avoid dangerous behavior in "shadow" lookahead functions
+def load_shadow_hack(outrom):
+    spcprg_rel_offset = 0x50510
+    hackmode = "ffmode"
+    
+    if hackmode == "safeshadow":
+        # Dummy out E3 and F5 commands in shadow command switch
+        outrom = byte_insert(outrom, 0x50B06, b"\xEB")
+        outrom = byte_insert(outrom, 0x50B0F, b"\xEB")
+        print(f"Safer shadow hack loaded.")
+    elif hackmode == "ffmode":
+        # Disable E3 and F5 shadowing after E2 is shadowed
+        hackblob = b"\x78\xFF\xC5\xF0\x19\x68\xE2\xD0\x03\x8F\xFF\xC5\x68\xE3\xD0\x05\x3F\x25\x17\x2F\xD4\x68\xF5\xD0\x05\x3F\x95\x16\x2F\xCB\x68\xE5\xD0\x05\x3F\xCF\x15\x2F\xC2\x68\xE7\xD0\x0B\x3F\xF3\x15\x2F\xB9\x00\x00\x00\x00\x00\x00"
+        outrom = byte_insert(outrom, 0x50B05, hackblob)
+        print(f"Shadow safe mode hack loaded.")
+    elif hackmode == "noshadow":
+        # Dummy out entire shadow command switch
+        outrom = byte_insert(outrom, spcprg_rel_offset + 0x05D4, b"\6F")
+        # Add disable slur to jump table
+        outrom = byte_insert(outrom, spcprg_rel_offset + 0x18C3, b"\xCF\x15")
+        # Add disable roll to jump table
+        outrom = byte_insert(outrom, spcprg_rel_offset + 0x18C7, b"\xDE\x15")
+        print(f"No shadowing hack loaded (unsafe??)")
+        
+    return outrom
+    
+def remap_brr(outrom, newloc):
+    if newloc > 0xFFFF or newloc < 0:
+        print(f"invalid memory offset for remap-BRR: {newloc:04X}, cancelling remap operation")
+        return outrom
+    if newloc > 0xF500 or newloc < 0x1C26:
+        print(f"WARNING: Memory offset for remap-BRR ({newloc:04X}) is significantly outside expected range. High probability of extreme corruption or game freezes.")
+    offset1 = 0x50020
+    offset2 = 0x50108
+    original1 = int.from_bytes(outrom[offset1:offset1+2], "little")
+    original2 = int.from_bytes(outrom[offset2:offset2+2], "little")
+    if original1 != original2:
+        print(f"WARNING: remap-BRR: Original ROM's SPC sample memory offsets don't match ({original1:04X} / {original2:04X}). This may mean that a hack was applied to your ROM that isn't compatible with remap-BRR. If so, expect corruption and/or game freezes.")
+    newbytes = newloc.to_bytes(2, "little")
+    outrom = byte_insert(outrom, offset1, newbytes)
+    outrom = byte_insert(outrom, offset2, newbytes)
+    
+    ## Adjust SFX BRR pointers
+    o_ptrblock = 0x52018
+    ptrblock = outrom[o_ptrblock:o_ptrblock+0x20]
+    new_ptrblock = bytearray()
+    for i in range(0x10):
+        ptr = int.from_bytes(ptrblock[i*2:i*2+2], "little") - original1 + newloc
+        new_ptrblock.extend(ptr.to_bytes(2, "little"))
+    outrom = byte_insert(outrom, o_ptrblock, new_ptrblock)
+    
+    print(f"SPC sample memory remapped to {newloc:04X}")
+    return outrom
+    
+def max_blocks(edl):
+    base = MAX_BLOCKS_BASE    
+    brr_ram_size = MAX_BLOCKS_BASE * 9
+    brr_ram_size -= (edl - 5) * 0x800
+    if remapbrr:
+        brr_ram_size += 0x4800 - remapbrr
+    return brr_ram_size // 9
+    
 if __name__ == "__main__":
     print("mfvitools Music and Instrument Insertion Tool for Final Fantasy VI")
     print()
@@ -398,6 +492,7 @@ if __name__ == "__main__":
     filegroup = parser.add_argument_group("File parameters")
     outgroup = parser.add_argument_group("Output file configuration")
     ingroup = parser.add_argument_group("Input file configuration")
+    hackgroup = parser.add_argument_group("Additional ROM patches and hacks")
     
     filegroup.add_argument('-i', '--in', help="set input ROM", dest="infile")
     filegroup.add_argument('-o', '--out', help="set output ROM", dest="outfile")
@@ -414,22 +509,22 @@ if __name__ == "__main__":
     outgroup.add_argument('-S', '--brrtable', help="set offset (hex) for BRR sample pointer table written to ROM", metavar="OFFSET", dest="o_brrtable")
     outgroup.add_argument('-I', '--inst', help="set offset (hex) for instrument loading tables written to ROM", metavar="OFFSET", dest="o_inst")
     outgroup.add_argument('-c', '--pack_metadata', action="store_true", help="use the minimum possible amount of space for instrument metadata")
-    outgroup.add_argument('-e', '--edl', help="set echo delay length in output ROM (affects all game audio)")
+    hackgroup.add_argument('-e', '--edl', help="set echo delay length in output ROM (affects all game audio)")
+    hackgroup.add_argument('-H', '--hack', help="add Myria's EDL ASM hack", action='store_true')
+    hackgroup.add_argument('-L', '--hack2', help="add safer subroutines hack", action= 'store_true')
+    hackgroup.add_argument('-R', '--remapbrr', help="remap SPC memory location for samples (default 4800)", metavar="OFFSET")
     ingroup.add_argument('-B', '--brrcount', default="0x3F", help="define number of instruments contained in source ROM (default: %(default)s)", metavar="NN")
     filegroup.add_argument('-s', '--brrpath', default="", help="define base path for samples loaded from import list files")
     filegroup.add_argument('-p', '--seqpath', default="", help="define base path for sequences loaded from import list files")
-    filegroup.add_argument('-d', '--dump-brr', action="store_true", help="dump all samples in final ROM and create a list file for them")
     
     def print_no_file_selected_help():
         print("No actions selected!")
-        print("You must specify at least one file to import or action to take.")
-        print("File import options:")
+        print("You must specify at least one file to import.")
+        print("Options:")
         print("    -l FILENAME             List file with sequences and/or samples")
         print("    -m FILENAME ID          MML file, default variant")
         print("    -m FILENAME?VARIANT ID  MML file, specific variant")
         print("    -r FILENAME ID          Binary sequence file")
-        print("Other actions:")
-        print("    -d                      Dump samples to BRR and list files")
     
     argv = list(sys.argv[1:])
     while not argv:
@@ -439,14 +534,13 @@ if __name__ == "__main__":
     args, unknown = parser.parse_known_args(argv)
     
     while True:
-        if args.listfiles or args.mmlfiles or args.binfiles or args.dump_brr:
+        if args.listfiles or args.mmlfiles or args.binfiles:
             break
         print_no_file_selected_help()
         text_in = input("> ")
         argv += shlex.split(text_in)
         args, unknown = parser.parse_known_args(argv)
-    sequence_import_exists = True if (args.listfiles or args.mmlfiles or args.binfiles) else False
-    
+        
     if args.infile is None:
         print("Enter source ROM filename.")
         print("Default: ff6.smc")
@@ -530,6 +624,7 @@ if __name__ == "__main__":
     bgmtable_loc = None
     brrtable_loc = None
     inst_loc = None
+    remapbrr = None
     try:
         brrcount = int(args.brrcount, 16)
     except ValueError:
@@ -550,13 +645,19 @@ if __name__ == "__main__":
             inst_loc = int(args.o_inst, 16)
     except ValueError:
         print(f"INSTTABLE: invalid offset value {args.o_inst}")
+    try:
+        if args.remapbrr:
+            remapbrr = int(args.remapbrr, 16)
+    except ValueError:
+        print(f"REMAPBRR: invalid offset value {args.remapbrr}")
         
     ifprint(f"  Number of BGM: {bgmcount} (0x{bgmcount:02X})", VERBOSE)
     ifprint(f"  Number of BRR: {brrcount} (0x{brrcount:02X})", VERBOSE)
     o = {k: hex(v) for k, v in offsets.items()}
     print()
     
-    # Set EDL
+    # Set default EDL
+    edl = 5
     if args.edl is not None:
         try:
             edl = int(args.edl)
@@ -569,10 +670,15 @@ if __name__ == "__main__":
             print("requested EDL value too high ({args.edl}), leaving original ROM value")
         else:
             outrom[EDL_OFFSET] = edl
-            brr_ram_size = MAX_BLOCKS * 9
-            brr_ram_size -= (edl - 5) * 0x800
-            MAX_BLOCKS = brr_ram_size // 9
-            
+        
+    edl_table_address = None
+    if args.hack:
+        outrom = load_edl_hack(outrom)
+    if args.hack2:
+        outrom = load_shadow_hack(outrom)
+    if remapbrr:
+        outrom = remap_brr(outrom, remapbrr)
+        
     # Load samples from source ROM into sample_defs
     sample_defs = {}
     for i in range(0, brrcount):
@@ -762,7 +868,7 @@ if __name__ == "__main__":
             
     # Check if sequence or sample tables need to be expanded
     expand_bgm, expand_brr = False, False
-    if sequence_import_exists and max(sequence_defs.keys()) > bgmcount - 1:
+    if max(sequence_defs.keys()) > bgmcount - 1:
         ifprint(f"Sequences will be expanded. (Original sequence count {bgmcount}, new sequence count {max(sequence_defs.keys())+1})", VERBOSE)
         expand_bgm = True
         o = offsets['bgmtable']
@@ -935,31 +1041,11 @@ if __name__ == "__main__":
         loc = o_brrtable + (id-1) * 3
         outrom = byte_insert(outrom, loc, to_rom_address(smp.data_location).to_bytes(3, "little"))
         
-    # Dump BRRs
-    if args.dump_brr:
-        print("brr dump test")
-        brrdump_listfile = "[Samples]\n"
-        for id, smp in sample_defs.items():
-            fn = outfile + f"_{id:02X}.brr"
-            try:
-                with open(fn, "wb") as f:
-                    f.write(smp.brr)
-            except OSError:
-                print(f"I/O error: couldn't write to {fn}")
-            brrdump_listfile += f"{id:02X}: {fn}, {smp.loop.hex().upper()}, {smp.tuning.hex().upper()}, {smp.adsr.hex().upper()}\n"
-        fn = outfile + f"_BRRdump.txt"
-        try:
-            with open(fn, "w") as f:
-                f.write(brrdump_listfile)
-            print(f"Wrote BRR dump list to {fn}")
-        except OSError:
-            print(f"I/O error: couldn't write to {fn}")
-            
     # Insert sequences, sequence pointers, and instrument tables
     for id, seq in sequence_defs.items():
         if not seq.sequence:
             continue
-        # TODO Warn for:
+        # Warn for:
         #    -- Sequence data overflow
         #    -- Sample overflow in sequence
         if len(seq.sequence) >= 0x1002:
@@ -981,10 +1067,10 @@ if __name__ == "__main__":
             print(f"Inserted sequence {seq.filename} at ${s:06X}")
             sequence_loc += len(seq.sequence)
         
-        if brr_blocks_used > MAX_BLOCKS:
-            print(f"**OVERFLOW**: Uses {brr_blocks_used} / {MAX_BLOCKS} BRR blocks")
+        if brr_blocks_used > max_blocks(seq.edl):
+            print(f"**OVERFLOW**: Uses {brr_blocks_used} / {max_blocks(seq.edl)} BRR blocks (EDL {seq.edl})")
         else:
-            print(f"        Uses {brr_blocks_used} / {MAX_BLOCKS} BRR blocks")
+            print(f"        Uses {brr_blocks_used} / {max_blocks(seq.edl)} BRR blocks (EDL {seq.edl})")
         
         # Write seq pointer
         loc = o_bgmtable + id * 3
@@ -994,6 +1080,10 @@ if __name__ == "__main__":
         # Write inst table
         loc = o_insttable + id * 0x20
         outrom = byte_insert(outrom, loc, seq.inst)
+        
+        # Write EDL table if applicable
+        if edl_table_address:
+            outrom[edl_table_address + id] = seq.edl
 
     # Reattach header and write ROM
     print()
