@@ -67,11 +67,16 @@ def akao_to_mml(data, inst=None, fileid='akao'):
     unskew.addr = data[2] + (data[3] << 8)
     print("unskew.addr {}".format(hex(unskew.addr)))
     
+    #Check end address so that channel pointers at or beyond that point
+    #don't get treated as active channels
+    end_addr = unskew(data[4] + (data[5] << 8))
+    
     channels, r_channels = {}, {}
     for c in range(0,16):
         caddr = unskew(data[6 + c*2] + (data[7 + c*2] << 8))
         if c >= 8:
-            if caddr == channels[c-8]: continue
+            if caddr == channels[c-8]:
+                continue
         channels[c] = caddr
     for k, v in channels.items():
         r_channels[v] = k
@@ -105,7 +110,10 @@ def akao_to_mml(data, inst=None, fileid='akao'):
         bytelen = 1
         # IF channel points here
         if loc in r_channels:
-            line += "\n{%d}\nl16" % (r_channels[loc]+1)
+            if loc >= end_addr:
+                print(f"Ignoring channel pointer {r_channels[loc]+1} (0x{loc:04X}) - past stated EOF (0x{end_addr:04X})")
+            else:
+                line += "\n{%d}\nl16" % (r_channels[loc]+1)
         # IF jump points here
         if loc in jumps:
             line += " $%d " % jumps[loc]
