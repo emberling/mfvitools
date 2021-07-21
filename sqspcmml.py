@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-VERSION = "beta 1.1.4"
+VERSION = "beta 1.1.5"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -9,6 +9,9 @@ DEBUG_STATE_EXTRA_VERBOSE = False
 DEBUG_BLOCK_VERBOSE = False
 DEBUG_PERC_VERBOSE = False
 DEBUG_WRITE_VERBOSE = False
+DEBUG_PROGRAM_RANGE = False
+
+INFINITE_LOOP_DETECTION_THRESHOLD = 10
 
 import sys, itertools, copy, string, os, math
 
@@ -150,6 +153,7 @@ class Note(Code):
         self.type = "note"
         
         self.dur = dur
+        self.noteid = noteid
         self.note = format.note_table[noteid]
         self.percid = noteid if noteid < 12 else None
         
@@ -171,6 +175,7 @@ class Note(Code):
 class RudraNote(Note):
     def __init__(self, noteid, idx):
         self.type = "note"
+        self.noteid = noteid
         note = format.note_table[noteid]
         self.idx = idx
         self.percid = noteid if noteid < 12 else None
@@ -455,6 +460,14 @@ def write_volume_macro(progval, volume, env=None, loc=0):
         macro_id = f"{progval}@"
     vol = f"{volume / 100:.2f}".lstrip('0')
     text = f"'{macro_id}{'f' if env else 'v'}*v{env_text}{vol}'"
+    
+    # track highest volume set per program
+    if progval is not None:
+        if progval not in program_volume_range:
+            program_volume_range[progval] = (volume, volume)
+        else:
+            program_volume_range[progval] = (min(program_volume_range[progval][0], volume), max(program_volume_range[progval][1], volume))
+
     return text
     
 class ExpressionCode(VolumeCode):
@@ -698,7 +711,7 @@ formats["rs1"].bytecode = {
     0xD7: Code(3, "p", params=[P(1), P(2)], env_param=1),
     0xD8: Code(2, "%v", params=[P(1)]),
     0xD9: Code(3, "%v", params=[P(1), P(2)], env_param=1),
-    0xDA: Code(2, "%k", params=[Signed(1)]),
+    0xDA: Code(2, "%k", params=[Signed(1)], transpose_param=1),
     0xDB: Comment(4, "PitchSlideMode len={}? delay={}? depth={}", params=[P(1), P(2), Signed(3)]),
     0xDC: Comment(1, "PitchSlideOff"),
     0xDD: Code(4, "m", params=[P(2), P(3), LfoScale(1)]), #guessing - vgmtrans has this wrong but i'm not sure what's right. 2nd param byte is definitely delay. DD is vibrato, not tremolo.
@@ -784,7 +797,7 @@ formats["ffmq"].bytecode = {
     0xE4: OctaveCode(2, "o", params=[P(1)], octave_param=1),
     0xE5: Code(1, "<"),
     0xE6: Code(1, ">"),
-    0xE7: Code(2, "%k", params=[Signed(1)]),
+    0xE7: Code(2, "%k", params=[Signed(1)], transpose_param=1),
     0xE8: Code(2, "m", params=[Signed(1)]),
     0xE9: Code(2, "k", params=[Signed(1)]),
     0xEA: ProgramCode(2, params=[P(1)]),
@@ -886,7 +899,7 @@ formats["rs2"].bytecode = {
     0xD6: OctaveCode(2, "o", params=[P(1)], octave_param=1),
     0xD7: Code(1, "<"),
     0xD8: Code(1, ">"),
-    0xD9: Code(2, "%k", params=[Signed(1)]),
+    0xD9: Code(2, "%k", params=[Signed(1)], transpose_param=1),
     0xDA: Code(2, "m", params=[Signed(1)]),
     0xDB: Code(2, "k", params=[Signed(1)]),
     0xDC: ProgramCode(2, params=[P(1)]),
@@ -1069,7 +1082,7 @@ formats["sd3"].bytecode = {
     0xE9: Comment(3, "TODO PanLFO rate={} depth={}", params=[P(1), P(2)]),
     0xEA: Comment(1, "PanLFOReset"),
     0xEB: Code(1, "p"),
-    0xEC: Code(2, "%k", params=[P(1)]),
+    0xEC: Code(2, "%k", params=[P(1)], transpose_param=1),
     0xED: Code(2, "m", params=[P(1)]),
     0xEE: Percussion(1, True),
     0xEF: Percussion(1, False),
@@ -1231,7 +1244,7 @@ formats["rnh"].bytecode = {
     0x08: Comment(2, "08 {}", params=[P(1)]),
     0x09: NoteTableShort(3, "{L}", params=[Multi(1,2)]),
     0x0A: NoteTable(8, "{L}", params=[P(1), P(2), P(3), P(4), P(5), P(6), P(7)]),
-    0x0B: Code(2, "%k", params=[ShiftedSigned(1, -36)]),
+    0x0B: Code(2, "%k", params=[ShiftedSigned(1, -36)], transpose_param=1),
     0x0C: VolumeCode(2, "v", params=[Scaled(1, .5)], volume_param=1),
     0x0D: VolumeCode(3, "v", params=[P(1), Scaled(1, .5)], env_param=1, volume_param=2),
     0x0E: Code(2, "p", params=[Scaled(1, .5)]),
@@ -1243,7 +1256,7 @@ formats["rnh"].bytecode = {
     0x14: Code(2, "%s", params=[P(1)]),
     0x15: Code(2, "%r", params=[P(1)]),
     0x16: Comment(1, "%y"),
-    0x17: Comment(2, "AltTuning {}", params=[P(1)]),
+    0x17: Comment(2, "AltTuning {}", params=[P(1)], transpose_param_alt=1),
     0x18: Comment(2, "18 {}", params=[P(1)]),
     0x19: Code(4, "m", params=[P(1), Scaled(2, 4), SixBitFloorScaled(3, 192, 21)]),
     0x1A: Code(1, "m"),
@@ -1348,18 +1361,21 @@ def register_percussion_note(prg=0x2F, key=69, pan=64, symbol=None, id=None, smp
     ifprint(f"Defined percussion {symbol} as {percussion_defs[symbol].write()}", DEBUG_PERC_VERBOSE)
 
 def calculate_forced_percussion():    
-    potential_symbols = string.ascii_lowercase[7:]
+    #potential_symbols = string.ascii_lowercase[7:]
+    potential_symbols = list(string.ascii_lowercase[7:])
     if len(forced_percussion_locs) > len(potential_symbols):
-        potential_symbols += ''.join([c + '+' for c in string.ascii_lowercase[7:]])
+        #potential_symbols += ''.join([c + '+' for c in string.ascii_lowercase[7:]])
+        potential_symbols.extend([f"{c}+" for c in string.ascii_lowercase[7:]])
         if len(forced_percussion_locs) > len(potential_symbols):
-            potential_symbols += ''.join([c + '-' for c in string.ascii_lowercase[7:]])
-            if len(forced_percussion_locs) > len(potential_symbols):
-                potential_symbols += ''.join([c + '-' for c in string.ascii_lowercase[:7]])
+            potential_symbols.extend([f"{c}-" for c in string.ascii_lowercase[7:]])
+            #potential_symbols += ''.join([c + '-' for c in string.ascii_lowercase[7:]])
+            #if len(forced_percussion_locs) > len(potential_symbols):
+            #    potential_symbols += ''.join([c + '-' for c in string.ascii_lowercase[:7]])
     symbol_idx = 0
     
     defs = []
     program = None
-    for (prg, oct, keyid), locs in sorted(forced_percussion_locs.items()):
+    for (prg, oct, keyid), locs in sorted([(k, v) for k, v in forced_percussion_locs.items() if None not in k]):
         if prg != program:
             defs.append(f"## auto percussion  0x{prg:02X}")
             program = prg
@@ -1698,11 +1714,15 @@ def trace_segments(data, segs):
         if seg in already_traced_segs: continue
         already_traced_segs.append(seg)
         seg_counter += 1
+        seen_this_before = {}
         #reset state variables
         loop_stack = []
         octave = 5 if format.low_octave_notes else None
         octave_rel = 0
         prev_octave = None
+        transpose = 0
+        transpose_rnh_main = 0
+        transpose_rnh_alt = 0
         volume = None
         expression = 0x7F
         program = None
@@ -1846,6 +1866,16 @@ def trace_segments(data, segs):
                 block_octave_rel[loc] = cmd
                 octave -= 1
                 ifprint(f"{loc:04X}: lowered octave to {octave}", DEBUG_STATE_EXTRA_VERBOSE)
+            if 'kwargs' in vars(cmdinfo):
+                if 'transpose_param' in cmdinfo.kwargs:
+                    if format.id == "rnh":
+                        transpose_rnh_main = cmdinfo.get(cmd, 'transpose_param')
+                        transpose = transpose_rnh_main + transpose_rnh_alt
+                    else:
+                        transpose = cmdinfo.get(cmd, 'transpose_param')
+                if 'transpose_param_alt' in cmdinfo.kwargs:
+                    transpose_rnh_alt = cmdinfo.get(cmd, 'transpose_param_alt')
+                    transpose = transpose_rnh_main + transpose_rnh_alt
                 
             if cmd[0] in flowctrl_cmds:
                 block_flowctrl_cmds.append(loc)
@@ -1927,9 +1957,10 @@ def trace_segments(data, segs):
                 loop_stack.append( [startloc, iterations, counter, octave] )
                 if format.loops_store_octave:
                     force_octave_set = len(block_flowctrl_cmds)
-                ifprint(f"{loc:04X}: loop started with {iterations} iterations", DEBUG_LOOP_VERBOSE)
+                ifprint(f"{loc:04X}: loop started with {iterations} iterations, stack depth {len(loop_stack)}", DEBUG_LOOP_VERBOSE)
                 if len(loop_stack) > format.max_loop_stack:
-                    print("warning: loop stack above {format.max_loop_stack}, behavior may become inaccurate")
+                    print(f"warning: loop stack above {format.max_loop_stack}, behavior may become inaccurate (stack size: {len(loop_stack)})")
+                    input()
                     loop_stack.pop(0)
                 elif len(loop_stack) > 4:
                     print("warning: loop stack is {len(loop_stack)} - unsupported by target engine. Correct manually.")
@@ -1950,7 +1981,7 @@ def trace_segments(data, segs):
                         finalize(append_before=append_before)
                         break
                     if counter >= iterations:
-                        ifprint(f"{loc:04X}: loop ended at {iterations} iterations", DEBUG_LOOP_VERBOSE)
+                        ifprint(f"{loc:04X}: loop ended at {iterations} iterations, new stack depth {len(loop_stack)-1}", DEBUG_LOOP_VERBOSE)
                         loop_stack.pop()
                     else:
                         counter += 1
@@ -1974,7 +2005,7 @@ def trace_segments(data, segs):
                     if counter == volta_count:
                         #print(f"jumping to volta at {shift(cmdinfo.dest(cmd)):04X}")
                         do_jump = True
-                        if cmd[0] in format.loop_break and volta_count > 1:
+                        if cmd[0] in format.loop_break and volta_count >= iterations:
                             loop_stack.pop()
                         
             #do stuff if it's a jump or end
@@ -1993,9 +2024,16 @@ def trace_segments(data, segs):
                 rel_octave_set(0)
                 if cmd[0] in format.hard_jump:
                     if next_loc in this_trace_segs:
-                        ifprint(f"We've been here before. Ending segment", DEBUG_JUMP_VERBOSE)
-                        finalize(append_before=append_before)
-                        break
+                        if next_loc in seen_this_before:
+                            seen_this_before[next_loc] += 1
+                        else:
+                            seen_this_before[next_loc] = 1
+                        if seen_this_before[next_loc] >= INFINITE_LOOP_DETECTION_THRESHOLD:
+                            ifprint(f"We've been here before. Ending segment", DEBUG_JUMP_VERBOSE)
+                            finalize(append_before=append_before)
+                            break
+                        else:
+                            ifprint(f"We've been here before {seen_this_before[next_loc]} times (below infinite loop detection threshold)", DEBUG_JUMP_VERBOSE)
                     else:
                         this_trace_segs.append(next_loc)
             elif cmd[0] in format.conditional_jump:
@@ -2010,6 +2048,17 @@ def trace_segments(data, segs):
             elif "note" in cmdinfo.type:
                 rel_octave_set(0)
                 
+            #track min/max note values for programs
+            if "note" in cmdinfo.type and octave is not None and program is not None and cmdinfo.note not in ['r', '^']:
+                note_value = cmdinfo.noteid + (octave * 12) + transpose
+                if program not in program_note_range:
+                    program_note_range[program] = (note_value, note_value)
+                else:
+                    program_note_range[program] = (min(note_value, program_note_range[program][0]), max(note_value, program_note_range[program][1]))
+                if format.dynamic_note_duration:
+                    ifprint(f"{program} - {cmdinfo.note}, o{octave}, tr{transpose} - {note_value} - {program_note_range[program]}", DEBUG_PROGRAM_RANGE)
+                else:
+                    ifprint(f"{program} - {cmdinfo.note}{cmdinfo.dur}, o{octave}, tr{transpose} - {note_value} - {program_note_range[program]}", DEBUG_PROGRAM_RANGE)
             #move forward
             finalize(append_before=append_before)
             loc = next_loc
@@ -2342,6 +2391,8 @@ if __name__ == "__main__":
     forced_percussion_notes = {}
     replace_items = {}
     redundant_items = {}
+    program_note_range = {}
+    program_volume_range = {}
     
     if spc_mode:
         if format.percussion_table_loc is not None:
@@ -2402,6 +2453,24 @@ if __name__ == "__main__":
         prepend += [""] + forced_percussion_defs
             
     mml = prepend + mml
+    
+    print("Note ranges of programs used (experimental):")
+    for p in sorted(program_note_range.keys()):
+        rng = program_note_range[p]
+        keytext = []
+        for r in rng:
+            keytext.append(formats["ff6"].note_table[r % 12] + str(r // 12))
+        print(f"    {p:02X}: {rng[0]} ({keytext[0]}) to {rng[1]} ({keytext[1]})")
+    ###
+    print("Volume ranges of programs used (experimental):")
+    for p, (l, h) in sorted(program_volume_range.items()):
+       print(f"    {p:02X}: {l} to {h}")
+    highest_volume = max([h for (l, h) in program_volume_range.values()])
+    normalize_factor = 127 / highest_volume
+    print(f"        Highest volume used is {highest_volume}.")
+    print(f"  NORMALIZATION: Multiply base volumes by {normalize_factor}")
+    print(f"                 Set global volume to * {1 / normalize_factor}")
+    print(f"                     (%x{int(255 * (1 / normalize_factor))} if no global volume currently set)")
     ###
     
     fn = fn.rpartition('.')[0]
