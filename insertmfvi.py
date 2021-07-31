@@ -357,7 +357,10 @@ def relpath(in_path):
         if "_MEI" in os.path.commonprefix([p, mei]):
             r = os.path.relpath(p, start=mei)
             return f"MEI::{r}"
-    return os.path.relpath(p)
+    try:
+        return os.path.relpath(p)
+    except ValueError:
+        return p
         
 def from_rom_address(addr):
     # NOTE ROM offset 7E0000-7E7FFF and 7F000-7F7FFF are inaccessible.

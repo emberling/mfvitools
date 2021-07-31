@@ -3,5 +3,6 @@ dist/
 spcbrr/
 *spec
 *.smc
+*.spc
 *.pyc
 *.bak

@@ -18,6 +18,10 @@ Format is based on rs3extool MML but extended and altered. Documentation [on git
 
 General music insertion tool for FF6. Supports raw data and MML import for sequences. Can also import custom BRR samples defined either in imported MMLs or in independent sample list files. Handles song, sample, and ROM expansion automatically. More detailed documentation [here](https://github.com/emberling/mfvitools/wiki/insertmfvi)
 
+## BUILD_SPC
+
+Extracts a music sequence within an FF6 ROM into an independently playable SPC file without need to actually launch the game. Experimental.
+
 ## SQSPCMML
 
 Converts binary music sequence data from various Square SPC sequence formats into mfvitools MML format (i.e., into FF6 format). This tool does not prioritize wholly accurate representation; instead, its design is focused on convenience and utility. Program, volume, and octave commands are replaced with macros, allowing these to be tweaked globally. Features not supported by FF6 are either converted to a close equivalent or rendered as comments. Samples may optionally also be ripped.
