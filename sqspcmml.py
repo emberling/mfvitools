@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-VERSION = "beta 1.1.5"
+VERSION = "beta 1.1.6"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -1075,14 +1075,14 @@ formats["sd3"].bytecode = {
     0xE2: VolumeCode(2, "v", params=[P(1)], volume_param=1),
     0xE3: Comment(1, "VolRel {}", params=[P(1)]),
     0xE4: VolumeCode(3, "v", params=[P(1), P(2)], env_param=1, volume_param=2),
-    0xE5: Comment(3, "m", params=[P(1), Signed(2)]),
+    0xE5: Code(3, "m", params=[P(1), Signed(2)]),
     0xE6: Comment(1, "PortaToggle"),
     0xE7: Code(2, "p", params=[Scaled(1, .5)]),
     0xE8: Code(3, "p", params=[P(1), Scaled(2, .5)], env_param=1),
     0xE9: Comment(3, "TODO PanLFO rate={} depth={}", params=[P(1), P(2)]),
     0xEA: Comment(1, "PanLFOReset"),
     0xEB: Code(1, "p"),
-    0xEC: Code(2, "%k", params=[P(1)], transpose_param=1),
+    0xEC: Code(2, "%k", params=[ScaledSigned(1, .25)], transpose_param=1),
     0xED: Code(2, "m", params=[P(1)]),
     0xEE: Percussion(1, True),
     0xEF: Percussion(1, False),
