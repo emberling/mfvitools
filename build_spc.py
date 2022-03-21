@@ -40,9 +40,9 @@ def load_binary_file(fn, expected_size=0):
 # how much data to read given only an offset. This function simulates
 # that process.
 
-def load_data_from_rom(rom, offset):
+def load_data_from_rom(rom, offset, seq=False):
     length = int.from_bytes(rom[offset:offset+2], "little")
-    data = rom[offset+2 : offset+2+length]
+    data = rom[offset+2 : offset+2+length+(1 if seq else 0)]
     return data
     
 def read_pointer(rom, offset, length=3):
@@ -152,7 +152,7 @@ def build_spc(rom, song_idx):
     loc = read_pointer(rom, POINTER_TO_SEQ_POINTERS)
     loc += song_idx * 3
     loc = read_pointer(rom, loc)
-    seq = load_data_from_rom(rom, loc)
+    seq = load_data_from_rom(rom, loc, seq=True)
     print(f"Sequence {song_idx:X} at {loc:06X} -- {len(seq):0X} bytes")
     
     # Append "end track" to keep unused channels from going rogue

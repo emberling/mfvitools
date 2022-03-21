@@ -488,13 +488,13 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                                 except:
                                     try: en = float(ee)
                                     except:
-                                        warn("error parsing {} into {}".format(r.group(0), s))
+                                        warn(fileid, s, "error parsing {} into {}".format(r.group(0), s))
                                         en = 0
                             try: dn = int(d[j])
                             except:
                                 try: dn = int(d[j],16)
                                 except:
-                                    warn("error parsing {} into {}".format(r.group(0), s))      
+                                    warn(fileid, m, "error parsing {} into {}".format(r.group(0), s))      
                                     dn = 0
                             if sign == "*":
                                 result = dn * en
@@ -858,7 +858,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
         else:
             warn(fileid, command, "Jump destination {} not found in file".format(v))
     #set up header
-    header = int_insert(b"\x00"*0x26, 0, len(data)-2, 2)
+    header = int_insert(b"\x00"*0x26, 0, len(data)-3, 2)
     header = int_insert(header, 2, 0x26, 2)
     header = int_insert(header, 4, len(data), 2)
     for i in range(1,9):
