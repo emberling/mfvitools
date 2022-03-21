@@ -638,11 +638,16 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                     mls.extend(dcom)
                 elif dcom in drumset:
                     params = {}
+                    deferred_env_params = {}
+                    #print(f"{dcom=}\n{drumset[dcom].params=}")
                     for k, v in drumset[dcom].params.items():
                         if lockstate and k != "@0": continue
                         if k in state:
                             if state[k] != v:
                                 params[k] = v
+                            elif k in ["%a0", "%y0", "%s0", "%r0"]:
+                                #print(f"deferring {k},{v}")
+                                deferred_env_params[k] = v
                         elif k == "%y" and not ( "%a0" in state or "%y0" in state or 
                                                  "%s0" in state or "%r0" in state):
                              pass
@@ -654,6 +659,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                         state.pop("%y0", None)
                         state.pop("%s0", None)
                         state.pop("%r0", None)
+                        params.update(deferred_env_params)
                     for k, v in params.items():
                         t = (re.sub('[0-9,]', '', k) + v).strip()
                         s = t + s if k == "@0" else s + t
