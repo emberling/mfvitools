@@ -96,10 +96,11 @@ class PercussionDef:
             if self.prg not in program_defs:
                 #sample_defs[self.prg] = f"#WAVE 0x{self.prg:02X} 0x00"
                 extract_brr(self.prg, brrid)
-                sample_defs[self.prg] = create_program_declaration(self.prg, brrid)
+                sample_defs[self.prg], octave_mod = create_program_declaration(self.prg, brrid)
                 program_defs[self.prg] = f"#def {prgid:1X}i=   |{prgid:1X}"
                 volume_defs[self.prg] = f"#def {prgid:1X}v=   v100" + "\n" + \
                                         f"#def {prgid:1X}f= v1,100"
+                #self.key += octave_mod * 12
         else:
             if self.prg >= 10:
                 prgtext = f"@0x{self.prg:02X}"
@@ -107,10 +108,13 @@ class PercussionDef:
                 prgtext = f"@{self.prg}"
             if self.prg not in program_defs:
                 extract_brr(self.prg, brrid)
-                sample_defs[self.prg] = "#" + create_program_declaration(self.prg, brrid)
+                sample_defs[self.prg], octave_mod = create_program_declaration(self.prg, brrid)
                 program_defs[self.prg] = f"#def {self.prg}@i=   @{self.prg}"
                 volume_defs[self.prg] = f"#def {self.prg}@v=   v100" + "\n" + \
                                         f"#def {self.prg}@f= v1,100"
+                #sample_defs[self.prg] = "#" + sample_defs[self.prg]
+                
+                #self.key += octave_mod * 12
                 
         return  f"{octave}{note} {prgtext} p{self.pan}"
         
@@ -315,7 +319,7 @@ class ProgramCode(Code):
                 octave_defs[progval] = f"#def {progval}@o=   o{format.base_octave + octave_mod}"
                 volume_defs[progval] = f"#def {progval}@v=   v100" + "\n" + \
                                        f"#def {progval}@f= v1,100"
-                sample_defs[progval] = "#" + sample_defs[progval]
+                #sample_defs[progval] = "#" + sample_defs[progval]
                 
         if CONFIG_USE_PROGRAM_MACROS:
             text = f"\n'{macro_id}i'"
@@ -365,7 +369,7 @@ class ProgramCodeBySample(ProgramCode):
                 octave_defs[progval] = f"#def {progval}@o=   o{format.base_octave + octave_mod}"
                 volume_defs[progval] = f"#def {progval}@v=   v100" + "\n" + \
                                        f"#def {progval}@f= v1,100"
-                sample_defs[progval] = "#" + sample_defs[progval]
+                #sample_defs[progval] = "#" + sample_defs[progval]
                 
         if CONFIG_USE_PROGRAM_MACROS:
             text = f"\n'{macro_id}i'"
@@ -2486,6 +2490,26 @@ if __name__ == "__main__":
     forced_percussion_defs = calculate_forced_percussion()
     mml = write_mml(bin)
     
+    # Try to refit fixed programs (00 - 1F) into empty dynamic program space (20 - 2F)
+    print(sample_defs)
+    next = 0x20
+    for i in range(0x20):
+        print(f"{i=}")
+        if i in sample_defs:
+            while next in sample_defs:
+                print(f"{next=}")
+                next += 1
+            if next <= 0x2F:
+                print(f"{sample_defs[i]=}")
+                sample_defs[i] = sample_defs[i].replace(f"0x{i:02X}", f"0x{next:02X}", 1)
+                print(f"{sample_defs[i]=}")
+                program_defs[i] = program_defs[i].replace(f"@{i}", f"|{next % 0x10}")
+                print("<<<")
+                next += 1
+            else:
+                sample_defs[i] = "#" + sample_defs[i]
+                print("###")
+                
     #prepend definitions
     prepend = [f"##created with sqspcmml {VERSION}"]
     if spc_mode:
