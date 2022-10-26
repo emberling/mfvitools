@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-VERSION = "beta 1.1.7"
+VERSION = "beta 1.1.7a"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -50,6 +50,7 @@ class Format:
         self.volta_jump = []
         self.loop_break = []
         self.conditional_jump = []
+        self.persistent_release_rate = [] 
         
         #defaults
         self.sequence_relative = True
@@ -68,6 +69,7 @@ class Format:
         self.program_base = 0x20
         self.max_loop_stack = 4
         self.base_octave = 5
+        self.brr_tuning_adjustment = 0
         
 class PercussionDef:
     def __init__(self, prg, key, pan, smp=None):
@@ -640,7 +642,7 @@ formats["ff4"].bytecode = {
     0xDA: OctaveCode(2, "o", params=[P(1)], octave_param=1),
     0xDB: ProgramCode(2, params=[P(1)]),
     0xDC: Comment(2, "VolEnvMode {}", params=[P(1)]),
-    0xDD: Code(2, "%r", params=[P(1)]), #GAIN release -> ADSR sustain rate
+    0xDD: Code(2, "%r", params=[P(1)], release_param=1), #GAIN release -> ADSR sustain rate
     0xDE: Comment(2, "Duration {}%", params=[P(1)]),
     0xDF: Code(2, "%c", params=[P(1)]),
     0xE0: Code(2, "[", params=[Increment(1)], collapse_empty=True, count_param=1),
@@ -683,6 +685,7 @@ formats["ff4"].octave_up = [0xE1]
 formats["ff4"].octave_down = [0xE2]
 formats["ff4"].hard_jump = [0xF4]
 formats["ff4"].loop_break = [0xF5]
+formats["ff4"].persistent_release_rate = [0xDD]
 formats["ff4"].program_base = 0x40
 
 ## ## ## AKAO2 ## ## ##
@@ -773,6 +776,7 @@ formats["ffmq"].tuning_table = 0x1B00
 formats["ffmq"].tuning_type = "double"
 formats["ffmq"].header_type = 2
 formats["ffmq"].tempo_scale = (60000 / 216) / 256
+formats["ffmq"].brr_tuning_adjustment = 3.1
 formats["ffmq"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "^", "r"]
 formats["ffmq"].duration_table = ["1", "2.", "2", "3", "4.", "4", "6", "8.", "8", "12", "16", "24", "32", "48", "64"]
 formats["ffmq"].bytecode = {
@@ -841,6 +845,7 @@ formats["ff5"].scanner_loc = 0x300
 formats["ff5"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
                               b"\xAF\xC8\xF0\xD0\xFB\x1A\xEB\xE8"
 formats["ff5"].header_type = 3
+formats["ff5"].brr_tuning_adjustment = 0
 formats["ff5"].volta_jump = []
 formats["ff5"].loop_break = [0xF9]
 
@@ -1738,6 +1743,7 @@ def trace_segments(data, segs):
         program = None
         force_octave_set = False
         force_volume_set = False
+        force_release_set = False
         block_volume_cmds = []
         block_octave_cmds = []
         block_flowctrl_cmds = []
@@ -1749,6 +1755,7 @@ def trace_segments(data, segs):
         percussion_marked = False
         percussion_state = None
         force_perc_state = False
+        release_gain_state = -1
         dur_table = []
         if format.dynamic_note_duration:
             dur_table = [d for d in format.duration_table if isinstance(d, int)]
@@ -1833,6 +1840,7 @@ def trace_segments(data, segs):
             rel_octave_delta = 0
             
             if cmdinfo.type == "program":
+                force_release_set = True
                 if cmdinfo.get(cmd) != program:
                     program = cmdinfo.get(cmd)
                     force_octave_set = len(block_flowctrl_cmds)
@@ -1868,6 +1876,8 @@ def trace_segments(data, segs):
                 block_octave_cmds.append((loc, octave))
                 octave_set = True
                 ifprint(f"{loc:04X}: set octave to {octave}", DEBUG_STATE_VERBOSE)
+            elif cmd[0] in format.persistent_release_rate:
+                release_gain_state = cmdinfo.get(cmd, 'release_param')
             elif cmd[0] in format.octave_up and octave:
                 block_octave_rel[loc] = cmd
                 octave += 1
@@ -1913,6 +1923,8 @@ def trace_segments(data, segs):
                     for oloc, oct in block_octave_cmds:
                         octave_locs[oloc] = program, oct
                         ifprint(f"{loc:04X}: static block: writing octave {oct} at {oloc:04X}", DEBUG_BLOCK_VERBOSE)
+                if force_release_set and release_gain_state >= 0 and release_gain_state <= 31:
+                    append_before += f"%r{release_gain_state}"
                 #handle alligator redundancy
                 if CONFIG_REMOVE_REDUNDANT_OCTAVES:
                     for roloc, _ in block_octave_rel.items():
@@ -1943,6 +1955,7 @@ def trace_segments(data, segs):
                 octave_set = False
                 force_octave_set = False
                 force_volume_set = False
+                force_release_set = False
                 
             #handle weird rudra duration stuff
             if format.dynamic_note_duration:
