@@ -682,7 +682,7 @@ formats["ff4"].end_track = [0xF1, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE
 formats["ff4"].octave_up = [0xE1]
 formats["ff4"].octave_down = [0xE2]
 formats["ff4"].hard_jump = [0xF4]
-formats["ff4"].volta_jump = [0xF5]
+formats["ff4"].loop_break = [0xF5]
 formats["ff4"].program_base = 0x40
 
 ## ## ## AKAO2 ## ## ##
