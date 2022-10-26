@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-VERSION = "beta 1.1.7a"
+VERSION = "beta 1.1.7b"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -2252,7 +2252,7 @@ if __name__ == "__main__":
         print("Enter data filename..")
         print("Accepts either raw data or SPC dump")
         fn = input(" > ").replace('"','').strip()
-        
+    
     try:
         with open(fn, 'rb') as f:
             bin = f.read()
@@ -2322,10 +2322,18 @@ if __name__ == "__main__":
     if CONFIG_IGNORE_FIRST_BYTES:
         print(f"detected extra {CONFIG_IGNORE_FIRST_BYTES}-byte header. use option 'h0' if this is incorrect")
         
+    if len(sys.argv) >= 3:
+        first_entry = " ".join(sys.argv[2:])
+    else:
+        first_entry = None
     while True:
-        print("Enter any additional configuration options (? for help):")
-        print()
-        entry = input(">").strip()
+        if first_entry:
+            entry = first_entry
+            first_entry = None
+        else:
+            print("Enter any additional configuration options (? for help):")
+            print()
+            entry = input(">").strip()
         if entry and entry[0] == '?':
             print("    b - extract BRR samples from SPC, if possible")
             print("    bh - 'b' with alternate BRR file naming scheme - identical samples from different SPCs share filenames")
@@ -2491,24 +2499,17 @@ if __name__ == "__main__":
     mml = write_mml(bin)
     
     # Try to refit fixed programs (00 - 1F) into empty dynamic program space (20 - 2F)
-    print(sample_defs)
     next = 0x20
     for i in range(0x20):
-        print(f"{i=}")
         if i in sample_defs:
             while next in sample_defs:
-                print(f"{next=}")
                 next += 1
             if next <= 0x2F:
-                print(f"{sample_defs[i]=}")
                 sample_defs[i] = sample_defs[i].replace(f"0x{i:02X}", f"0x{next:02X}", 1)
-                print(f"{sample_defs[i]=}")
                 program_defs[i] = program_defs[i].replace(f"@{i}", f"|{next % 0x10}")
-                print("<<<")
                 next += 1
             else:
                 sample_defs[i] = "#" + sample_defs[i]
-                print("###")
                 
     #prepend definitions
     prepend = [f"##created with sqspcmml {VERSION}"]
