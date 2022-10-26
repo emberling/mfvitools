@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-VERSION = "beta 1.1.6"
+VERSION = "beta 1.1.7"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -1129,7 +1129,7 @@ formats["rs3"].bytecode[0xF7] = Code(2, "%b0,", params=[P(1)])
 formats["rs3"].bytecode[0xF8] = Code(2, "%f0,", params=[P(1)])
 formats["rs3"].bytecode[0xFD] = Comment(2, "PlaySfx {}", params=[P(1)])
 
-        # BANDAI SATELLAVIEW #
+        # SATELLAVIEW #
 formats["bs"] = copy.deepcopy(formats["rs3"])
 formats["bs"].sort_as = "13"
 formats["bs"].id = "ct"
@@ -1419,7 +1419,10 @@ def create_program_declaration(slot, brrid):
         else:
             adsrtext = "F 7 7 0"
         
-        brrfile = fn.rpartition('.')[0] + f"_{slot:02X}.brr"
+        if slot in brr_filenames:
+            brrfile = brr_filenames[slot]
+        else:
+            brrfile = fn.rpartition('.')[0] + f"_{slot:02X}.brr"
         return f"#BRR 0x{slot:02X} 0x00; {brrfile}, {looptext}, {pitchtext}, {adsrtext}"
  
 def extract_brr(slot, brrid):
@@ -1438,10 +1441,17 @@ def extract_brr(slot, brrid):
                 break
             loc += 9
         
+        if CONFIG_EXTRACT_BRR_ALT_FILENAMES:
+            brrfile = f"{len(brr) // 9:04}_{sum(brr) % pow(16,6):06X}.brr"
+        else:
+            brrfile = os.path.basename(fn).rpartition('.')[0] + f"_{slot:02X}.brr"
+        brrfile = os.path.join(CONFIG_BRR_PATH, brrfile)
+        brr_filenames[slot] = brrfile
+        
         brr = len(brr).to_bytes(2, "little") + brr
-        brrfile = fn.rpartition('.')[0] + f"_{slot:02X}.brr"
+        
         try:
-            with open(brrfile, "wb") as f:
+            with open(os.path.join(os.path.dirname(fn), brrfile), "wb") as f:
                 f.write(brr)
             print(f"Wrote sample {slot:02X} to file {brrfile}")
         except OSError:
@@ -2248,6 +2258,8 @@ if __name__ == "__main__":
     
     CONFIG_IGNORE_FIRST_BYTES = 0
     CONFIG_EXTRACT_BRR = False
+    CONFIG_EXTRACT_BRR_ALT_FILENAMES = False
+    CONFIG_BRR_PATH = ""
     CONFIG_USE_PROGRAM_MACROS = True
     CONFIG_USE_VOLUME_MACROS = True
     CONFIG_USE_OCTAVE_MACROS = True
@@ -2279,6 +2291,8 @@ if __name__ == "__main__":
         entry = input(">").strip()
         if entry and entry[0] == '?':
             print("    b - extract BRR samples from SPC, if possible")
+            print("    bh - 'b' with alternate BRR file naming scheme - identical samples from different SPCs share filenames")
+            print("       append '@DIRNAME', e.g. 'bh@brr/ff4' to extract files into a subdirectory")
             print("    dp - sort definitions by program number, excluding #WAVE (default)")
             print("    dt - sort definitions by definition type")
             print("    dw - sort definitions by program number, including #WAVE")
@@ -2300,7 +2314,7 @@ if __name__ == "__main__":
     
         options = entry.split(' ')
         options_hex_int = ['h', 'p', 's']
-        options_str = ['d', 'm']
+        options_str = ['b', 'd', 'm']
         for option in options:
             if not len(option):
                 continue
@@ -2316,6 +2330,15 @@ if __name__ == "__main__":
             
             if option[0] == 'b':
                 CONFIG_EXTRACT_BRR = True
+                print(f"{option}: extract BRR files")
+                if val.startswith('h'):
+                    CONFIG_EXTRACT_BRR_ALT_FILENAMES = True
+                    print(f"{option}: alternate BRR filenames")
+                    val = val[1:]
+                if val.startswith('@'):
+                    CONFIG_BRR_PATH = val[1:]
+                    os.makedirs(os.path.join(os.path.dirname(fn), CONFIG_BRR_PATH), exist_ok=True)
+                    print(f"{option}: set BRR relative path to {CONFIG_BRR_PATH}")
             if option[0] == 'd':
                 if val == 't':
                     CONFIG_DEF_SORT_MODE = "type"
@@ -2393,6 +2416,10 @@ if __name__ == "__main__":
     redundant_items = {}
     program_note_range = {}
     program_volume_range = {}
+    brr_filenames = {}
+    id666_title = ""
+    id666_album = ""
+    id666_artist = ""
     
     if spc_mode:
         if format.percussion_table_loc is not None:
@@ -2405,6 +2432,11 @@ if __name__ == "__main__":
             if format.env_table:
                 inst_data_adsr = bin[format.env_table:format.env_table + 0x60]
             print(inst_data_addr.hex())
+            
+        # Read metadata from SPC
+        id666_title  = str(bin[0x2E:0x4E].strip(b'\x00')).strip('b').strip("'")
+        id666_album  = str(bin[0x4E:0x6E].strip(b'\x00')).strip('b').strip("'")
+        id666_artist = str(bin[0xB1:0xD1].strip(b'\x00')).strip('b').strip("'")
     
     orig_bin = bin
     bin = bin[origin:]
@@ -2423,6 +2455,9 @@ if __name__ == "__main__":
     
     #prepend definitions
     prepend = [f"##created with sqspcmml {VERSION}"]
+    if spc_mode:
+        prepend += [""] + [f"#TITLE {id666_title}"] + [f"#ALBUM {id666_album}"]
+        prepend += [f"#COMPOSER {id666_artist}"] + ["#ARRANGED sqspcmml (automated)"]
     if CONFIG_DEF_SORT_MODE == "type":
         prepend += [""] + [v for k,v in sorted(sample_defs.items())]
         if CONFIG_USE_PROGRAM_MACROS:
