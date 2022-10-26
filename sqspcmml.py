@@ -302,19 +302,20 @@ class ProgramCode(Code):
         if progval not in program_defs:
             if prog is not None:
                 extract_brr(prog+0x20, progval)
-                sample_defs[prog+0x20] = create_program_declaration(prog+0x20, progval)
+                sample_defs[prog+0x20], octave_mod = create_program_declaration(prog+0x20, progval)
                 #sample_defs[prog+0x20] = f"#WAVE 0x{prog+0x20:02X} 0x00"
                 program_defs[prog+0x20] = f"#def {prog:1X}i=   |{prog:1X}"
-                octave_defs[prog+0x20] = f"#def {prog:1X}o=   o{format.base_octave}"
+                octave_defs[prog+0x20] = f"#def {prog:1X}o=   o{format.base_octave + octave_mod}"
                 volume_defs[prog+0x20] = f"#def {prog:1X}v=   v100" + "\n" + \
                                          f"#def {prog:1X}f= v1,100"
             else:
                 extract_brr(progval, progval)
-                sample_defs[progval] = "#" + create_program_declaration(progval, progval)
+                sample_defs[progval], octave_mod = create_program_declaration(progval, progval)
                 program_defs[progval] = f"#def {progval}@i=   @{progval}"
-                octave_defs[progval] = f"#def {progval}@o=   o{format.base_octave}"
+                octave_defs[progval] = f"#def {progval}@o=   o{format.base_octave + octave_mod}"
                 volume_defs[progval] = f"#def {progval}@v=   v100" + "\n" + \
                                        f"#def {progval}@f= v1,100"
+                sample_defs[progval] = "#" + sample_defs[progval]
                 
         if CONFIG_USE_PROGRAM_MACROS:
             text = f"\n'{macro_id}i'"
@@ -352,18 +353,19 @@ class ProgramCodeBySample(ProgramCode):
             if prog is not None:
                 #sample_defs[prog+0x20] = f"#WAVE 0x{prog+0x20:02X} 0x00"
                 extract_brr(prog+0x20, progval)
-                sample_defs[prog+0x20] = create_program_declaration(prog+0x20, progval)
+                sample_defs[prog+0x20], octave_mod = create_program_declaration(prog+0x20, progval)
                 program_defs[prog+0x20] = f"#def {prog:1X}i=   |{prog:1X}"
-                octave_defs[prog+0x20] = f"#def {prog:1X}o=   o{format.base_octave}"
+                octave_defs[prog+0x20] = f"#def {prog:1X}o=   o{format.base_octave + octave_mod}"
                 volume_defs[prog+0x20] = f"#def {prog:1X}v=   v100" + "\n" + \
                                          f"#def {prog:1X}f= v1,100"
             else:
                 extract_brr(progval, progval)
-                sample_defs[progval] = "#" + create_program_declaration(progval, progval)
+                sample_defs[progval], octave_mod = create_program_declaration(progval, progval)
                 program_defs[progval] = f"#def {progval}@i=   @{progval}"
-                octave_defs[progval] = f"#def {progval}@o=   o{format.base_octave}"
+                octave_defs[progval] = f"#def {progval}@o=   o{format.base_octave + octave_mod}"
                 volume_defs[progval] = f"#def {progval}@v=   v100" + "\n" + \
                                        f"#def {progval}@f= v1,100"
+                sample_defs[progval] = "#" + sample_defs[progval]
                 
         if CONFIG_USE_PROGRAM_MACROS:
             text = f"\n'{macro_id}i'"
@@ -776,7 +778,8 @@ formats["ffmq"].tuning_table = 0x1B00
 formats["ffmq"].tuning_type = "double"
 formats["ffmq"].header_type = 2
 formats["ffmq"].tempo_scale = (60000 / 216) / 256
-formats["ffmq"].brr_tuning_adjustment = 3.1
+formats["ffmq"].brr_tuning_adjustment = 3.36
+formats["ffmq"].base_octave = 6
 formats["ffmq"].note_table = ["c", "c+", "d", "d+", "e", "f", "f+", "g", "g+", "a", "a+", "b", "^", "r"]
 formats["ffmq"].duration_table = ["1", "2.", "2", "3", "4.", "4", "6", "8.", "8", "12", "16", "24", "32", "48", "64"]
 formats["ffmq"].bytecode = {
@@ -846,6 +849,7 @@ formats["ff5"].scanner_data = b"\x20\xC0\xCD\xFF\xBD\xE8\x00\x5D" + \
                               b"\xAF\xC8\xF0\xD0\xFB\x1A\xEB\xE8"
 formats["ff5"].header_type = 3
 formats["ff5"].brr_tuning_adjustment = 0
+formats["ff5"].base_octave = 5
 formats["ff5"].volta_jump = []
 formats["ff5"].loop_break = [0xF9]
 
@@ -1395,15 +1399,23 @@ def calculate_forced_percussion():
 
 def create_program_declaration(slot, brrid):
     if not CONFIG_EXTRACT_BRR:
-        return f"#WAVE 0x{slot:02X} 0x00"
+        return f"#WAVE 0x{slot:02X} 0x00", 0
     else:
+        octave_mod = 0
+        semitones = None
         addr = int.from_bytes(inst_data_addr[brrid*4 : brrid*4 + 2], "little")
         loop = int.from_bytes(inst_data_addr[brrid*4 + 2: brrid*4 + 4], "little")
         looptext = (loop - addr).to_bytes(2, "little").hex().upper()
         if format.tuning_type == "single":
             pitchtext = f"{inst_data_pitch[brrid]:02X}00"
         elif format.tuning_type == "double":
-            pitchtext = inst_data_pitch[brrid*2 : brrid*2 + 2].hex()
+            if format.brr_tuning_adjustment:
+                pitchscale = int.from_bytes(inst_data_pitch[brrid*2 : brrid*2 + 2], "big", signed=True)
+                pitchscale = (pitchscale / 65536) + 1
+                semitones = (math.log(pitchscale, 10) / math.log(2, 10) * 12) - format.brr_tuning_adjustment
+                sign = "+" if semitones > 0 else ""
+            else:
+                pitchtext = inst_data_pitch[brrid*2 : brrid*2 + 2].hex()
         elif format.tuning_type == "suzuki":
             print(f"DEBUG: tuning data for {slot:02X} {brrid:02X} is {inst_data_pitch[brrid*2:brrid*2+2].hex().upper()}")
             coarse = inst_data_pitch[brrid*2+1]
@@ -1418,6 +1430,14 @@ def create_program_declaration(slot, brrid):
                 pitchscale = (pitchscale - 1) * 2 + 1
             semitones = (math.log(pitchscale, 10) / math.log(2, 10) * 12) - 3
             sign = "+" if semitones > 0 else ""
+        if semitones is not None:
+            MAX_SEMITONES = math.log((0x7FFF / 65536) + 1, 10) / math.log(2, 10) * 12
+            while semitones > MAX_SEMITONES:
+                semitones -= 12
+                octave_mod += 1
+            while semitones < -12:
+                semitones += 12
+                octave_mod -= 1
             pitchtext = f"{sign}{semitones:.3f}"
         if format.env_table:
             adsrtext = inst_data_adsr[brrid*2 : brrid*2 + 2].hex().upper()
@@ -1428,7 +1448,7 @@ def create_program_declaration(slot, brrid):
             brrfile = brr_filenames[slot]
         else:
             brrfile = fn.rpartition('.')[0] + f"_{slot:02X}.brr"
-        return f"#BRR 0x{slot:02X} 0x00; {brrfile}, {looptext}, {pitchtext}, {adsrtext}"
+        return f"#BRR 0x{slot:02X} 0x00; {brrfile}, {looptext}, {pitchtext}, {adsrtext}", octave_mod
  
 def extract_brr(slot, brrid):
     if CONFIG_EXTRACT_BRR:
