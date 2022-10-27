@@ -22,7 +22,7 @@ POINTER_TO_SEQ_POINTERS = 0x50539
 def text_insert(data, position, text, length):
     new_data = bytearray(length)
     new_data = byte_insert(new_data, 0, bytes(text, "utf-8"), maxlength = length)
-    return byte_insert(data, position, new_data)
+    return bytearray(byte_insert(data, position, new_data))
     
 if __name__ == "__main__":
     print(f"mfvitools mass extractor tool")
@@ -161,22 +161,29 @@ if __name__ == "__main__":
             meta_cfg = config[romfile][song_idx_string].split(';')
             while len(meta_cfg) < 5:
                 meta_cfg.append("")
+            for i in range(len(meta_cfg)):
+                meta_cfg[i] = meta_cfg[i].strip()
                 
             songfn = romid + '_' + meta_cfg[0]
             
             if meta_cfg[1]:
                 out_mml.append(f"#TITLE {meta_cfg[1]}")
                 spc = text_insert(spc, 0x2E, meta_cfg[1], 0x20)
+                spc[0x23] = 0x1A
             if meta_cfg[2]:
                 out_mml.append(f"#ALBUM {meta_cfg[2]}")
                 spc = text_insert(spc, 0x4E, meta_cfg[2], 0x20)
+                spc[0x23] = 0x1A
             if meta_cfg[3]:
                 out_mml.append(f"#COMPOSER {meta_cfg[3]}")
                 spc = text_insert(spc, 0xB1, meta_cfg[3], 0x20)
+                spc[0x23] = 0x1A
             if meta_cfg[4]:
                 out_mml.append(f"#ARRANGED {meta_cfg[4]}")
                 spc = text_insert(spc, 0x6E, meta_cfg[4], 0x10)
-                
+                spc[0x23] = 0x1A
+            spc = byte_insert(spc, 0xAC, b"\x35\x30\x30\x30")
+            
             ## MML surgery
             out_mml.append("")
             for line in sample_defs:
