@@ -2232,7 +2232,8 @@ def write_mml(data):
         
 def clean_end():
     print("Processing ended.")
-    input("Press enter to close.")
+    if not CONFIG_QUICK_EXIT:
+        input("Press enter to close.")
     os._exit(0)
     
 ############
@@ -2303,6 +2304,7 @@ if __name__ == "__main__":
     CONFIG_EXPAND_NOTES_TO_THREE = False
     CONFIG_REMOVE_REDUNDANT_OCTAVES = True
     CONFIG_DEF_SORT_MODE = "program"
+    CONFIG_QUICK_EXIT = False
     forced_percussion_prgs = set()
     force_rudra_seq_offset = False
     
@@ -2349,6 +2351,7 @@ if __name__ == "__main__":
             print("    pXX - treat notes with program XX (hex) as percussion notes")
             print("    sXXXX - specify sequence offset (hex) in SPC (for rudra)")
             print("    t - use ties instead of & for rendering three-byte notes")
+            print("    q - exit without waiting for confirmation")
             print()
             print("for example, if you want something closer to a byte-accurate conversion while sacrificing")
             print("convenience features, and you know your data file includes the two-byte length")
@@ -2421,6 +2424,9 @@ if __name__ == "__main__":
             elif option[0] == 't':
                 CONFIG_EXPAND_NOTES_TO_THREE = True
                 print(f"{option}: using ties instead of & for three-byte note durations")
+            elif option[0] == 'q':
+                CONFIG_QUICK_EXIT = True
+                print(f"{option}: no confirmation to exit")
         print()
         break
         
