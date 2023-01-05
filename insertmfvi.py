@@ -383,7 +383,7 @@ def byte_insert(data, position, newdata, maxlength=0, end=0):
         data += (b"\x00" * (position - len(data)))
     if end:
         maxlength = end - position + 1
-    if maxlength and len(data) > maxlength:
+    if maxlength and len(newdata) > maxlength:
         newdata = newdata[:maxlength]
     return data[:position] + newdata + data[position + len(newdata):]
 
