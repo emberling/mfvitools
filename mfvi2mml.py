@@ -32,7 +32,7 @@ def clean_end():
     input("Press enter to close.")
     quit()
 
-def akao_to_mml(data, inst=None, fileid='akao'):
+def akao_to_mml(data, inst=None, fileid='akao', force_short_header=False):
     
     def unskew(base):
         base -= unskew.addr
@@ -56,7 +56,9 @@ def akao_to_mml(data, inst=None, fileid='akao'):
     #we can't reliably tell whether the header is included in all cases, but the
     #common custom song address base (26 00) is an impossible ROM header so if
     #this is the first two bytes, we know it's an SPCrip.
-    if data[0:2] == b"\x26\x00":
+    if force_short_header:
+        data = int_insert(b"\x00\x00", 0, len(data), 2) + data
+    elif data[0:2] == b"\x26\x00":
         print("detected no header (26 00 base)")
         data = int_insert(b"\x00\x00", 0, len(data), 2) + data
     #alternately, it is almost certainly an SPCrip if $4-5 == $14-15 != $24-25

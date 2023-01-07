@@ -114,7 +114,7 @@ if __name__ == "__main__":
             loc = read_pointer(rom, loc)
             seq = load_data_from_rom(rom, loc)
             try:
-                mml = akao_to_mml(seq)
+                mml = akao_to_mml(seq, force_short_header=True)
             except IndexError:
                 print(f"Failed to convert sequence {romid}:{song_idx:02X} (sequence too short?)")
                 continue
