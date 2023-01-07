@@ -112,10 +112,11 @@ def akao_to_mml(data, inst=None, fileid='akao', force_short_header=False):
         bytelen = 1
         # IF channel points here
         if loc in r_channels:
-            if loc >= end_addr:
-                print(f"Ignoring channel pointer {r_channels[loc]+1} (0x{loc:04X}) - past stated EOF (0x{end_addr:04X})")
-            else:
-                line += "\n{%d}\nl16" % (r_channels[loc]+1)
+            for chnl in [c for c in channels if channels[c] == loc]:
+                if loc >= end_addr:
+                    print(f"Ignoring channel pointer {chnl+1} (0x{loc:04X}) - past stated EOF (0x{end_addr:04X})")
+                else:
+                    line += "\n{%d}\nl16" % (chnl+1)
         # IF jump points here
         if loc in jumps:
             line += " $%d " % jumps[loc]
@@ -193,6 +194,15 @@ def akao_to_mml(data, inst=None, fileid='akao', force_short_header=False):
         loc += bytelen
     mml.append(line)
     
+    # If main start exists but alternate does not exist for a channel pair,
+    # set up alternate starts at EOF
+    eof_append = ""
+    for chnl in [c for c in channels if c >= 8 and channels[c] == end_addr
+            and c - 8 in channels and channels[c-8] != end_addr]:
+        eof_append += "{%d} " % (chnl+1)
+    if eof_append:
+        mml.append(eof_append + "##EOF")
+        
     for k, v in jumps.items():
         if v not in foundjumps:
             warn(fileid, "{} {}".format(k,v), "Jump destination never found")
