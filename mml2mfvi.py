@@ -73,7 +73,7 @@ class Drum:
             self.octave = int(s[2]) if s[2] else 5
             self.note = s[3] + s[4]
             s5 = re.sub('\s*', '', s[5]).lower()
-            params = re.findall("\|[0-9a-f]|@0x[0-9a-f][0-9a-f]|%?[^|0-9][0-9,]*", s5)
+            params = re.findall("\|[0-9a-f]|@0x[0-9a-f][0-9a-f]|%?[^|0-9][0-9,\-]*", s5)
             par = {}
             for p in params:
                 if p[0] == "@" and len(p) >= 5:
@@ -83,7 +83,7 @@ class Drum:
                 if p[0] == '|' and len(p) >= 2:
                     par['@0'] = str(int(p[1], 16) + 32)
                 else:
-                    pre = re.sub('[0-9]+', '0', p)
+                    pre = re.sub('[0-9\-]+', '0', p)
                     suf = re.sub('%?[^0-9]', '', p, 1)
                     if pre in equiv_tbl:
                         pre = equiv_tbl[pre]
