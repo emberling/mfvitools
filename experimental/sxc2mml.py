@@ -2,6 +2,7 @@
 import sys, os, itertools
 
 DEBUG_WRITE_FULL_HEX = False
+DEBUG_SUPER_VERBOSE_NOTES = False
 CONFIG_NOTE_LENGTH_COMPENSATION = True
 
 def clean_end():
@@ -114,13 +115,16 @@ def handle_full_note(code):
     return " " + handle_note(code[0], code[1], code[2], code[3])
     
 def handle_note(key, delta, length, velocity):
-    global state_octave, state_delta, state_length, state_last_key, state_velocity, state_output_volume, state_slur, state_retrigger, state_remainder
+    global state_octave, state_delta, state_length, state_last_key, state_velocity, state_output_volume, state_slur, state_retrigger, state_remainder, DEBUG_SUPER_VERBOSE_NOTES
     
     key += pattern_transpose
     
     octave = (key // 12)
     note = get_note_key(key)
     
+    if DEBUG_SUPER_VERBOSE_NOTES:
+        print(note + f" {delta=} {length=}", end=" :: ")
+        
     before_this_note_text = ""
     after_this_note_text = ""
     if state_last_key == key and state_remainder >= 0 and not state_retrigger:
@@ -139,7 +143,7 @@ def handle_note(key, delta, length, velocity):
             after_this_note_text += ')'
             state_slur = False
     state_retrigger = False
-    
+        
     state_length = length
     state_delta = delta
     state_remainder = max(-1, length - delta)
@@ -172,11 +176,16 @@ def handle_note(key, delta, length, velocity):
         volume_text = ""
     state_velocity = velocity
     
+    if DEBUG_SUPER_VERBOSE_NOTES:
+        print(octave_text + volume_text + note_text + f" :: {state_delta=} {state_length=} {state_last_key=} {state_slur=} {state_remainder=}")
+        if input() == "end":
+            DEBUG_SUPER_VERBOSE_NOTES = False
+        
     return octave_text + volume_text + note_text
     
 def handle_command(cmd, code):   
     global state_volume, state_octave, state_retrigger, state_remainder, state_last_key
-    note = "^"
+    note = "^" if state_remainder > 0 else "r"
     if cmd == 0xF1:    # track volume
         state_volume = code[2]
         text = ""
