@@ -69,6 +69,8 @@ def handle_pattern(ptr):
     while True:
         #print(f"DEBUG: reading sequence at {loc:04X}")
         cmd = data[loc]
+        if DEBUG_SUPER_VERBOSE_NOTES:
+            print(f"{write_hex(data[loc:loc+4])} > ", end="")
         if cmd == 0xFD:    # end pattern
             pdata = data[ptr:loc+1]
             break  
@@ -184,11 +186,16 @@ def handle_note(key, delta, length, velocity):
     return octave_text + volume_text + note_text
     
 def handle_command(cmd, code):   
-    global state_volume, state_octave, state_retrigger, state_remainder, state_last_key
+    global state_volume, state_output_volume, state_octave, state_retrigger, state_remainder, state_last_key
     note = "^" if state_remainder > 0 else "r"
     if cmd == 0xF1:    # track volume
         state_volume = code[2]
         text = ""
+        if state_remainder > 0:
+            output_volume = int(state_velocity * (1 + state_volume) / 128)
+            if output_volume != state_output_volume:
+                text += f"v{output_volume}"
+                state_output_volume = output_volume
     elif cmd == 0xF2:    # pan
         text = f"p{code[2]}"
     elif cmd == 0xF3:    # rest
