@@ -530,14 +530,12 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
         if line.lower().startswith("#drum"):
             s = line[5:].strip()
             s = s.split('#')[0].lower()
-            print(f"{s=}")
             for c in ignore:
                 try:
                     s = re.sub(re.escape(c)+".*?"+re.escape(c), "", s)
                 except Exception:
                     c = "\\" + c
                     s = re.sub(re.escape(c)+".*?"+re.escape(c), "", s)
-            print(f"{s=}\n")
             d = Drum(s.strip())
             if d.delim:
                 if d.delim not in drums: drums[d.delim] = {}
