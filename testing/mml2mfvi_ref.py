@@ -64,6 +64,12 @@ def mlog(msg):
     
 class Drum:
     def __init__(self, st):
+        # hack - strip common variant markers from after delimiter before processing
+        a, b = st.split('=')
+        for c in ["~", "/", "`", "\?", "_"]:
+            b = re.sub(c, '', b)
+        st = "=".join([a, b])
+    
         s = re.findall('(.)(.[+-]?)\\1=\s*([0-9]?)([a-gr^])([+-]?)\s*(.*)', st)
         if s: s = s[0]
         mlog("{} -> {}".format(st, s))
@@ -524,14 +530,14 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
         if line.lower().startswith("#drum"):
             s = line[5:].strip()
             s = s.split('#')[0].lower()
+            print(f"{s=}")
             for c in ignore:
                 try:
                     s = re.sub(re.escape(c)+".*?"+re.escape(c), "", s)
                 except Exception:
                     c = "\\" + c
                     s = re.sub(re.escape(c)+".*?"+re.escape(c), "", s)
-            for c in ["~", "/", "`", "\?", "_"]:
-                s = re.sub(c, '', s)
+            print(f"{s=}\n")
             d = Drum(s.strip())
             if d.delim:
                 if d.delim not in drums: drums[d.delim] = {}

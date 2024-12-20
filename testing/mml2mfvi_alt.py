@@ -63,13 +63,7 @@ def mlog(msg):
     if __name__ == "__main__": mml_log += msg + '\n'
     
 class Drum:
-    def __init__(self, st):
-        # hack - strip common variant markers from after delimiter before processing
-        a, b = st.split('=')
-        for c in ["~", "/", "`", "\?", "_"]:
-            b = re.sub(c, '', b)
-        st = "=".join([a, b])
-    
+    def __init__(self, st):    
         s = re.findall('(.)(.[+-]?)\\1=\s*([0-9]?)([a-gr^])([+-]?)\s*(.*)', st)
         if s: s = s[0]
         mlog("{} -> {}".format(st, s))
@@ -385,12 +379,17 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None, inst_only=False)
         else:
             return isets
             
+    # maybe it's good if the main function actually knows what the variant delims are
+    all_delims = set()
+    for k, v in variants.items():
+        all_delims.update(v)
+        
     #generate data
     datas = {}
     for k, v in variants.items():
         if variant in variants and k != variant:
             continue
-        datas[k] = mml_to_akao_main(mml, v, fileid)
+        datas[k] = mml_to_akao_main(mml, v, fileid, all_delims)
     
     if variant in variants:
         return (datas[variant], isets[variant])
@@ -402,7 +401,7 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None, inst_only=False)
         return output
         
         
-def mml_to_akao_main(mml, ignore='', fileid='mml'):
+def mml_to_akao_main(mml, ignore='', fileid='mml', all_delims=''):
     mml = copy.copy(mml)
     ##final bit of preprocessing
     #single character macros
@@ -530,14 +529,12 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
         if line.lower().startswith("#drum"):
             s = line[5:].strip()
             s = s.split('#')[0].lower()
+            print(f"{s=}")
             for c in ignore:
-                try:
-                    s = re.sub(re.escape(c)+".*?"+re.escape(c), "", s)
-                except Exception:
-                    c = "\\" + c
-                    s = re.sub(re.escape(c)+".*?"+re.escape(c), "", s)
-            #for c in ["~", "/", "`", "\?", "_"]:
-            #    s = re.sub(c, '', s)
+                s = re.sub(re.escape(c)+".*?"+re.escape(c), "", s)
+            for c in all_delims:
+                s = re.sub(re.escape(c), '', s)
+            print(f"{s=}\n")
             d = Drum(s.strip())
             if d.delim:
                 if d.delim not in drums: drums[d.delim] = {}
