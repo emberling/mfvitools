@@ -133,9 +133,9 @@ class BrrSample:
             extratext = text[4].strip()
         except IndexError:
             extratext = ""
-        extratext = re.sub("\{.*\}", "", extratext)
-        coarsetune = re.search("\[[0-9+-]+\]", extratext)
-        extratext = re.sub("\[.*\]", "", extratext)
+        extratext = re.sub(r"\{.*\}", "", extratext)
+        coarsetune = re.search(r"\[[0-9+-]+\]", extratext)
+        extratext = re.sub(r"\[.*\]", "", extratext)
         self.name = extratext.strip()
         if not self.name:
             self.name = self.filename
@@ -419,6 +419,10 @@ def attenuate(pct):
 ## print (f"Accepted samples: {[f'{k:02X}' for k in brrs.keys()]}")
 
 try:
+    print("mfvitools brr2sf2")
+    print("usage: brr2sf2.py LISTFILE [sort] [id] [@SAMPLEPATH]")
+    print()
+    
     if len(sys.argv) >= 2:
         listfn = sys.argv[1]
     else:
