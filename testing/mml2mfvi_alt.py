@@ -322,6 +322,9 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None, inst_only=False)
         mml = newmml
     
     variants = get_variant_list(mml, sfxmode)
+    all_delims = set()
+    for k, v in variants.items():
+        all_delims.update(v)
     if variant:
         if variant not in variants:
             print("mml error: requested unknown variant '{}'\n".format(variant))
@@ -379,11 +382,6 @@ def mml_to_akao(mml, fileid='mml', sfxmode=False, variant=None, inst_only=False)
         else:
             return isets
             
-    # maybe it's good if the main function actually knows what the variant delims are
-    all_delims = set()
-    for k, v in variants.items():
-        all_delims.update(v)
-        
     #generate data
     datas = {}
     for k, v in variants.items():

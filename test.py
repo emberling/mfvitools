@@ -38,6 +38,15 @@ for source in sourceglob:
     
     variants = set(ref.keys()).union(set(alt.keys()))
     for v in variants:
+        pv = "(default)" if v == "_default_" else f"[{v}]"
+        
+        # check vs. calling mml_to_akao with a specific variant
+        specific_variant_ref = testing.mml2mfvi_ref.mml_to_akao(file, variant=v)
+        specific_variant_alt = testing.mml2mfvi_alt.mml_to_akao(file, variant=v)
+        if ref[v] != specific_variant_ref:
+            report(source, f"{pv}: Mismatch between reference process(variant={v}) and process()[{v}]")
+        if alt[v] != specific_variant_alt:
+            report(source, f"{pv}: Mismatch between alternate process(variant={v}) and process()[{v}]")
         # mimic insertmfvi's "init_from_import"
         brr_imports_ref = testing.mml2mfvi_ref.get_brr_imports(file, v)
         for k, importinfo in brr_imports_ref.items():
@@ -50,7 +59,6 @@ for source in sourceglob:
             importinfo[2] = testing.mml2mfvi_alt.parse_brr_tuning(importinfo[2])
             importinfo[3] = testing.mml2mfvi_alt.parse_brr_env(importinfo[3])
         
-        pv = "(default)" if v == "_default_" else f"[{v}]"
         if v not in ref.keys():
             report(source, f"Testing produced variant {pv} not found in reference")
         elif v not in alt.keys():

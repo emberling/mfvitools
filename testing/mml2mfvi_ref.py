@@ -536,6 +536,8 @@ def mml_to_akao_main(mml, ignore='', fileid='mml'):
                 except Exception:
                     c = "\\" + c
                     s = re.sub(re.escape(c)+".*?"+re.escape(c), "", s)
+            #for c in ["~", "/", "`", "\?", "_"]:
+            #    s = re.sub(c, '', s)
             d = Drum(s.strip())
             if d.delim:
                 if d.delim not in drums: drums[d.delim] = {}
