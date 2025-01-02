@@ -1,0 +1,189 @@
+; sfxtest.700 - emberling - 2025.01.02
+; script to provide rough PRNG-based simulation of
+; game sound effect interruption
+
+; initialize PRNG to first bytes of RAM
+m r0 w0
+n #8 < w0
+a r1 w0
+n #8 < w0
+a r2 w0
+n #8 < w0
+a r3 w0
+
+; or manual seed
+; m #12345 w0
+
+:1 ; main loop
+w 64000 ; 1/32sec
+r1
+bra 99 ; rand => w7
+c w7 #16 ; 1 in 16
+bhi 40 ; play one of our scenarios
+bra 1 ; restart
+
+:40 ; scenario select
+bra 99 ; rand => w7
+c w7 #32 ; 1 in 8 (7/8 remains)
+r0
+bhi 10 ; scenario: nothing going on for a bit
+c w7 #96 ; 2 in 8 (5/8 remains)
+bhi 12 ; scenario: deliberate menuing
+c w7 #128 ; 1 in 8 (4/8 remains)
+bhi 13 ; scenario: chain random game sfx
+c w7 #192 ; 2 in 8 (2/8 remains)
+bhi 31 ; play single random game sfx
+bra 11 ; else: scenario: isolated menu sound
+:41 ; scenario return point
+m #0 w2 ; clear current scenario debug display
+w 2048000 ; 1 sec delay between scenarios
+r
+
+:20 ; play system sound $20
+m #$20 i0
+wi
+r
+
+:21 ; play system sound $21
+m #$21 i0
+wi
+r
+
+:22 ; play system sound $22 (buzzer)
+m #$22 i0
+wi
+r
+
+:23 ; play system sound $23 (confirm)
+m #$23 i0
+wi
+r
+
+:28 ; play system sound $28 (turn)
+m #$28 i0
+wi
+r
+
+:30 ; play random menu sound
+r1
+bra 99 ; rand => w7
+c w7 #128 ; 1 in 2
+bhi 20 ; play sound
+blo 21 ; else play sound
+r
+
+:31 ; play random game sound effect
+r1
+bra 99 ; rand => w7
+m #$18 i0
+m w7 i1
+m #$80 i2
+wi
+r
+
+:55 ; delay some randomish amount
+;     1/64 sec. chunks
+;     7 in 8 chance of repeating / playing an additional chunk
+r1
+bra 99
+c w7 #224 ; 7 in 8 (repeat)
+r0
+bhi 55
+r
+
+:10 ; scenario: nothing going on for a bit
+m #10 w2 ; set current scenario display
+w 128000 ; 1/16sec
+r1
+bra 99 ; rand => w7
+c w7 #8 ; 1 in 32
+r0
+blo 10 ; if failed, loop
+bra 41 ; scenario return point
+
+:11 ; scenario: isolated menu sound
+; 50% one beep, 50% two, with some delay variance
+m #11 w2 ; set current scenario display
+r1
+bra 30 ; play random menu sound
+w 192000 ; 3/32sec
+bra 99 ; rand => w7
+r0
+c w7 #128 ; 1 in 2 (chance to play second menu sound)
+blo 111 ; skip forward if failed
+r1
+bra 99 ; rand => w7
+r0
+c w7 #128 ; 1 in 2 (chance to delay 1/4sec instead of 3/32)
+blo 112 ; skip forward if failed
+w 64000 ; 1/32sec
+w 256000 ; 1/8sec
+:112
+r1
+bra 30 ; play random menu sound
+:111
+r0
+bra 41 ; scenario return point
+
+:12 ; scenario: deliberate menuing
+m #12 w2 ; set current scenario display
+r1
+bra 30 ; play random menu sound
+w 192000 ; 3/32sec
+:121
+r1
+bra 30 ; play random menu sound
+w 96000 ; 3/64sec
+r1
+bra 99 ; rand => w7
+r0
+blo 122
+w 32000 ; 1/64 sec
+:122
+r1
+bra 99 ; rand => w7
+c w7 #192 ; 7 in 8 (chance to keep menuing more)
+r0
+bhi 121
+w 96000 ; 3/64sec
+r1
+bra 99 ; rand => w7
+c w7 #64 ; 1 in 4 (chance for error instead of confirm)
+r1
+bhi 22
+blo 23
+r0
+bra 41 ; scenario return point
+
+:13 ; scenario: chain random game sound effects
+m #13 w2 ; set current scenario display
+r1
+bra 31 ; play random game sfx
+r1
+bra 55 ; wait random amount
+r1
+bra 99 ; rand => w7
+c w7 #128 ; 1 in 2 (chance to repeat)
+r0
+bhi 13 ; repeat if passed
+r0
+bra 41 ; scenario return point
+
+:99 ; xorshift PRNG
+; record previous results
+n #8 < w6
+a w7 w6
+; generate
+m w0 w1
+n #13 < w1
+n w1 ^ w0
+m w0 w1
+n #17 > w1
+n w1 ^ w0
+m w0 w1
+n #5 < w1
+n w1 ^ w0
+; isolate lowest 8 bits in w7 for simpler comparisons
+m w0 w7
+n #255 & w7
+r
