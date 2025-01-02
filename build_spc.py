@@ -12,12 +12,21 @@ STATIC_PTR_OFFSET = 0x52016
 STATIC_ENV_OFFSET = 0x52038
 STATIC_PITCH_OFFSET = 0x5204A
 
+SPC_ENGINE_BANK_START = 0x50000
+POINTER_TO_SPC_ENGINE = 0x50010
+POINTER_TO_SFX_SEQ = 0x50012
+POINTER_TO_STATIC_BRR = 0x50014
+POINTER_TO_STATIC_PTR = 0x50016
+POINTER_TO_STATIC_ENV = 0x50018
+POINTER_TO_STATIC_PITCH = 0x5001A
+
 POINTER_TO_BRR_POINTERS = 0x50222
 POINTER_TO_BRR_LOOPS = 0x5041C
 POINTER_TO_BRR_ENV = 0x504DE
 POINTER_TO_BRR_PITCH = 0x5049C
 POINTER_TO_INST_TABLE = 0x501E3
 POINTER_TO_SEQ_POINTERS = 0x50539
+
 
 def end_with_message(message, pause=True):
     print(message)
@@ -65,10 +74,15 @@ def print_bytes(bin, group=2):
     
 def build_samples(rom, song_idx):
     
-    static_brr_data = load_data_from_rom(rom, STATIC_BRR_OFFSET)
-    static_brr_ptr = load_data_from_rom(rom, STATIC_PTR_OFFSET)
-    static_brr_env = load_data_from_rom(rom, STATIC_ENV_OFFSET)
-    static_brr_pitch = load_data_from_rom(rom, STATIC_PITCH_OFFSET)
+    static_brr_offset = read_pointer(rom, POINTER_TO_STATIC_BRR, 2) + SPC_ENGINE_BANK_START
+    static_ptr_offset = read_pointer(rom, POINTER_TO_STATIC_PTR, 2) + SPC_ENGINE_BANK_START
+    static_env_offset = read_pointer(rom, POINTER_TO_STATIC_ENV, 2) + SPC_ENGINE_BANK_START
+    static_pitch_offset = read_pointer(rom, POINTER_TO_STATIC_PITCH, 2) + SPC_ENGINE_BANK_START
+    
+    static_brr_data = load_data_from_rom(rom, static_brr_offset)
+    static_brr_ptr = load_data_from_rom(rom, static_ptr_offset)
+    static_brr_env = load_data_from_rom(rom, static_env_offset)
+    static_brr_pitch = load_data_from_rom(rom, static_pitch_offset)
 
     brr_pointer_offset = read_pointer(rom, POINTER_TO_BRR_POINTERS)
     brr_loop_offset = read_pointer(rom, POINTER_TO_BRR_LOOPS)
@@ -139,7 +153,8 @@ def build_spc(rom, song_idx):
     spc = byte_insert(spc, 0, spc_work_ram[0x100:0x300])
     
     # $0200 to $1A00 - SPC engine code
-    spc = byte_insert(spc, 0x200, load_data_from_rom(rom, SPC_ENGINE_OFFSET))
+    spc_engine_offset = read_pointer(rom, POINTER_TO_SPC_ENGINE, 2) + SPC_ENGINE_BANK_START
+    spc = byte_insert(spc, 0x200, load_data_from_rom(rom, spc_engine_offset))
     
     # $1A00 to $1C00 - patch metadata/pointer tables
     # $4800 up to $F600 - BRR sample data
@@ -148,7 +163,12 @@ def build_spc(rom, song_idx):
     spc = byte_insert(spc, 0x4800, samples)
     
     # $1C00 to $2C00 - sequence data
-    # $2C00 to $4800 - SFX pointers and data (not implemented in this program)
+    # $2C00 to $4800 - SFX pointers and data
+    # Insert SFX first in case of overflow
+    loc = read_pointer(rom, POINTER_TO_SFX_SEQ, 2) + SPC_ENGINE_BANK_START
+    spc = byte_insert (spc, 0x2C00, load_data_from_rom(rom, loc))
+    
+    # Read sequence
     loc = read_pointer(rom, POINTER_TO_SEQ_POINTERS)
     loc += song_idx * 3
     loc = read_pointer(rom, loc)
