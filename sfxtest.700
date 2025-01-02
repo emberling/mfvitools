@@ -84,11 +84,16 @@ r
 :55 ; delay some randomish amount
 ;     1/64 sec. chunks
 ;     7 in 8 chance of repeating / playing an additional chunk
+m #0 w3 ; debug counter
+:551
 r1
+w 320000 ; 1/64sec
+a #1 w3 ; debug counter
 bra 99
+m w7 w4
 c w7 #224 ; 7 in 8 (repeat)
 r0
-bhi 55
+bhi 551
 r
 
 :10 ; scenario: nothing going on for a bit
