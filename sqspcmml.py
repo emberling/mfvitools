@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-VERSION = "beta 1.1.7b"
+VERSION = "beta 1.1.7c"
 
 DEBUG_STEP_BY_STEP = False
 DEBUG_LOOP_VERBOSE = False
@@ -1603,7 +1603,7 @@ def parse_header(data, loc=0):
                 if data[i] == edl:
                     print(f"found specified rudra sequence starting at {i:04X}")
                     header_start = i
-                    header = header = data[header_start:header_start+header_length]
+                    header = data[header_start:header_start+header_length]
                     found = True
                 else:
                     print(f"specified sequence location failed sanity check (EDL = {edl}, first byte = {data[i]:02X})")
@@ -1677,8 +1677,9 @@ def parse_header(data, loc=0):
         for i in range(1,num_tracks+1):
             ii = i*2
             track_start = int.from_bytes(header[ii:ii+2], "little")
-            first_track = min(first_track, track_start)
+            ## first_track = min(first_track, track_start)
             tracks[i-1] = track_start
+        first_track = tracks[0]
         shift_amt = first_track - header_length
 
 
