@@ -159,9 +159,21 @@ def akao_to_mml(data, inst=None, fileid='akao', force_short_header=False):
             for p in range(1,paramlen+1):
                 params.append(data[loc+p])
             while params:
-                if byte == 0xDC:
+                if byte in [0xDC, 0xEE]:
                     if params[0] >= 32 and params[0] < 48:
                         s = "|{:X}".format(params[0] % 16)
+                        params.pop(0)
+                        if params:
+                            s += ","
+                        else:
+                            break
+                if byte in [0xED, 0xEE, 0xEF] and len(params) == 2:
+                    if params[0] >= 128:
+                        adsr_a =  params[0] & 0b00001111
+                        adsr_d = (params[0] & 0b01110000) >> 4
+                        adsr_s = (params[1] & 0b11100000) >> 5
+                        adsr_r =  params[1] & 0b00011111
+                        s += f"{adsr_a},{adsr_d},{adsr_s},{adsr_r}"
                         break
                 if byte == 0xE2: #loop
                     params[0] += 1

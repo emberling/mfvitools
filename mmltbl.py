@@ -69,13 +69,21 @@ r_length_tbl = {
 command_tbl = {
     ("@", 1) : 0xDC, #program
     ("|", 1) : 0xDC, #program (hex param)
+    ("@", 3) : 0xEE, #program + ADSR (bitfield)
+    ("|", 3) : 0xEE, #program + ADSR (bitfield)
+    ("@", 5) : 0xEE, #program + A,D,S,R
+    ("|", 5) : 0xEE, #program + A,D,S,R
     ("%a", 0): 0xE1, #reset ADSR
     ("%a", 1): 0xDD, #set attack
+    ("%a", 2): 0xEF, #set full ADSR (bitfield)
+    ("%a", 4): 0xEF, #set full ADSR (A,D,S,R)
     ("%b", 1): 0xF7, #echo feedback (rs3)
     ("%b", 2): 0xF7, #echo feedback (ff6)
     ("%c", 1): 0xCF, #noise clock
     ("%d0", 0): 0xFC,#drum mode off (rs3)
     ("%d1", 0): 0xFB,#drum mode on (rs3)
+    ("%d", 3): 0xED, #set default ADSR for program (p,bitfield)
+    ("%d", 5): 0xED, #set default ADSR for program (p,A,D,S,R)
     ("%e0", 0): 0xD5,#disable echo
     ("%e1", 0): 0xD4,#enable echo
     ("%f", 1): 0xF8, #filter (rs3)
@@ -173,6 +181,9 @@ byte_tbl = {
     0xE9: (1, "s0"),
     0xEA: (1, "s1"),
     0xEB: (0, "\n;"),
+    0xED: (3, "%d"),
+    0xEE: (3, "@"),
+    0xEF: (2, "%a"),
     0xF0: (1, "t"),
     0xF1: (2, "t"),
     0xF2: (1, "%v"),
@@ -202,4 +213,6 @@ equiv_tbl = {   #Commands that modify the same data, for state-aware modes (drum
     "|": "@0",
     "@": "@0",
     "o": "o0",
+    "|0,0,0,0,0": "@0",
+    "@0,0,0,0,0": "@0"
     }

@@ -218,7 +218,7 @@ class Sequence():
                 self.imports = mml2mfvi.get_brr_imports(self.mml, variant=v)
                 if self.imports:
                     ifprint(f"DEBUG: got imports {self.imports} for {self.filename}", DEBUG)
-                self.sequence, self.inst = mml2mfvi.mml_to_akao(self.mml, self.filename, variant=v, sfxmode=self.is_sfx)
+                self.sequence, self.inst = mml2mfvi.mml_to_akao(self.mml, self.filename, variant=v, sfxmode=self.is_sfx, use_extra_commands=args.hack3)
                 self.edl = mml2mfvi.get_echo_delay(self.mml, variant=v)
                 if self.edl is None:
                     self.edl = edl
@@ -516,6 +516,22 @@ def load_edl_hack(outrom):
     edl_table = bytes([edl]) * 256
     outrom, edl_table_address, _ = put_somewhere(outrom, edl_table, "EDL Table")
     
+    ##hack = ( # Testing an addition to hopefully fix the glitching
+    ##           Doesn't work as expected -- i clearly don't grok how the
+    ##           SPC port transfer works
+    ##    b"\xE2\x20"         # SEP #$20      ; 8-bit A
+    ##    b"\x9C\x43\x21"     # STZ $2143     ; SPC port = ?? ?? ?? 00
+    ##    b"\x9C\x42\x21"     # STZ $2142     ; SPC port = ?? ?? 00 00
+    ##    b"\xA9\x0D"         # LDA #$0D      ; A = $0D (DSP EFB address)
+    ##    b"\x8D\x41\x21"     # STA $2141     ; SPC port = ?? 0D 00 00
+    ##    b"\xA9\xFC"         # LDA #$FD      ; A = $FD (FD xx yy = set DSP register interrupt)
+    ##    b"\x8D\x40\x21"     # STA $2140     ; SPC port = FD 0D 00 00 (Set DSP EFB to 00)
+    ##    b"\xCD\x40\x21"     # CMP $2140     ; ...
+    ##    b"\xD0\xFB"         # BNE -5        ; Loop until SPC port clears
+    ##    b"\x1A"             # INC A         ; ... Increment and
+    ##    b"\x29\x7F"         # AND A, #$7F   ; ... clear high bit and store
+    ##    b"\x85\x1E"         # STA $1E       ; ... transfer counter. (does this do anything?)
+    ##    )
     hack = b"\xE2\x30\x9C\x43\x21\x9C\x42\x21\xA6\x01\xBF" + to_rom_address(edl_table_address).to_bytes(3, "little") +  b"\xC2\x10\x8D\x41\x21\xA9\xFC\x8D\x40\x21\xCD\x40\x21\xD0\xFB\x1A\x29\x7F\x85\x1E\xA5\x02\x5C\xA8\x01\xC5"
     outrom, hack_address, _ = put_somewhere(outrom, hack, "EDL Table Hack Code")
     hook = b"\x5C" + to_rom_address(hack_address).to_bytes(3, "little")
@@ -525,11 +541,28 @@ def load_edl_hack(outrom):
     
     inform(f"Myria's EDL Table hack: code is at {hack_address:06X}, table is at {edl_table_address:06X}")
     
+    # I don't know 65816 at all, this is my best interpretation:
+    ## E2 30       # SEP #$30          ; Set status bits (nvMXdizc)
+    ## 9C 43 21    # STZ $2143         ; Store zero to memory (abs) (SPC port 3)
+    ## 9C 42 21    # STZ $2142         ; Store zero to memory (abs) (SPC port 2)
+    ## A6 01       # LDX $01           ; Load X from memory (direct page) (01 = song index)
+    ## BF zz yy xx # LDA $xxyyzz+X     ; Load A from memory (long abs + X)
+    ## C2 10       # REP #$10          ; Reset status bits (nvmXdizc)
+    ## 8D 41 21    # STA $2141         ; Store A to memory (abs) (SPC port 1)
+    ## A9 FC       # LDA #$FC          ; Set A to $FC (literal)
+    ## 8D 40 21    # STA $2140         ; Store A to memory (abs) (SPC port 0)
+    ## CD 40 21    # CMP A, $2140      ; Test A == memory (abs) (SPC port 0)
+    ## D0 FB       # BNE $FB           ; Branch if not equal: -5 bytes (Wait until SPC port clears)
+    ## 1A          # INC A             ; Increment A
+    ## 29 7F       # AND A, #$7F       ; Bitmask A to <=127
+    ## 85 1E       # STA $1E           ; Store A to memory (direct page) (1E = transfer counter)
+    ## A5 02       # LDA $02           ; Load A from memory (direct page) (02 = master volume)
+    ## 5C A8 01 C5 # JMP $C501A8       ; Return
+    
     return outrom
     
 ### Testing basic ASM hack to avoid dangerous behavior in "shadow" lookahead functions
 def load_shadow_hack(outrom):
-    spcprg_rel_offset = 0x50510
     hackmode = "ffmode"
     
     if hackmode == "safeshadow":
@@ -539,18 +572,104 @@ def load_shadow_hack(outrom):
         inform(f"Safer shadow hack loaded.")
     elif hackmode == "ffmode":
         # Disable E3 and F5 shadowing after E2 is shadowed
-        hackblob = b"\x78\xFF\xC5\xF0\x19\x68\xE2\xD0\x03\x8F\xFF\xC5\x68\xE3\xD0\x05\x3F\x25\x17\x2F\xD4\x68\xF5\xD0\x05\x3F\x95\x16\x2F\xCB\x68\xE5\xD0\x05\x3F\xCF\x15\x2F\xC2\x68\xE7\xD0\x0B\x3F\xF3\x15\x2F\xB9\x00\x00\x00\x00\x00\x00"
+        
+        # at 05F5 (inside the switch loop to handle shadow track commands):
+        hackblob = (
+            b"\x78\xFF\xC5" # CMP $C5, #$FF ; $C5 = current loop count
+            b"\xF0\x19"     # BEQ +$19      ; If FF (skip flag) then skip next 25 bytes (to E5)
+            b"\x68\xE2"     # CMP A, #$E2   ; Is current instruction E2 -- loop start?
+            b"\xD0\x03"     # BNE +3        ; If not, skip 3 bytes
+            b"\x8F\xFF\xC5" # MOV $C5, #$FF ; Set skip flag in $C5
+            b"\x68\xE3"     # CMP A, #$E3   ; Is current instruction E3 -- loop end?
+            b"\xD0\x05"     # BNE +5        ; If not, skip 5 bytes
+            b"\x3F\x25\x17" # CALL $1725    ; Call shadow subroutine for E3
+            b"\x2F\xD4"     # BRA D4        ; Continue loop
+            b"\x68\xF5"     # CMP A, #$F5   ; Is current instruction F5 -- jump to volta?
+            b"\xD0\x05"     # BNE +5        ; If not, skip 5 bytes
+            b"\x3F\x95\x16" # CALL $1695    ; Call shadow subroutine for F5
+            b"\x2F\xCB"     # BRA CB        ; Continue loop
+            b"\x68\xE5"     # CMP A, #$E5   ; Is current instruction E5 -- disable slur?
+            b"\xD0\x05"     # BNE +5        ; If not, skip 5 bytes
+            b"\x3F\xCF\x15" # CALL $15CF    ; Call shadow subroutine for E5
+            b"\x2F\xC2"     # BRA C2        ; Continue loop
+            b"\x68\xE7"     # CMP A, #$E7   ; Is current instruction E7 -- disable legato?
+            b"\xD0\x07"     # BNE +11       ; If not, skip 7 bytes
+            b"\x3F\xF3\x15" # CALL $15F3    ; Call shadow subroutine for E7
+            b"\x2F\xB9"     # BRA B9        ; Continue loop
+            
+            b"\x00\x00"
+            
+            b"\x68\xDC"     # CMP A, #$DC   ; Is current instruction DC -- program change?
+            b"\xF0\x04"     # BEQ +4        ; If so, skip 4 bytes
+            b"\x68\xEE"     # CMP A, #$EE   ; Is current instruction EE -- program change?
+            )
         outrom = byte_insert(outrom, 0x50B05, hackblob)
         inform(f"Shadow safe mode hack loaded.")
     elif hackmode == "noshadow":
         # Dummy out entire shadow command switch
-        outrom = byte_insert(outrom, spcprg_rel_offset + 0x05D4, b"\6F")
+        outrom = byte_insert(outrom, offsets["engine"] + 0x05D4, b"\6F")
         # Add disable slur to jump table
-        outrom = byte_insert(outrom, spcprg_rel_offset + 0x18C3, b"\xCF\x15")
+        outrom = byte_insert(outrom, offsets["engine"] + 0x18C3, b"\xCF\x15")
         # Add disable roll to jump table
-        outrom = byte_insert(outrom, spcprg_rel_offset + 0x18C7, b"\xDE\x15")
+        outrom = byte_insert(outrom, offsets["engine"] + 0x18C7, b"\xDE\x15")
         inform(f"No shadowing hack loaded (unsafe??)")
         
+    return outrom
+    
+### Testing hack to add extra track commands:
+###     ED: Set program default ADSR
+###     EE: Program change with specified ADSR
+###     EF: Direct set full ADSR (faster when changing two or more values)
+def load_adsr_command_hack(outrom):
+    # thanks to annotated disassembly by m06
+    # (https://github.com/mogue/FF6-SoundEngine/blob/master/spc_program.asm)
+    
+    hackblob = (
+        b"\x00"             # --- EF: Direct set full ADSR
+        b"\xD5\x00\xF9"     # MOV $F900+X, A    ; Voice ADSR1 = parameter
+        b"\x3F\xC9\x05"     # CALL NextOpCode   ; Store next parameter in A
+        b"\xD5\x01\xF9"     # MOV $F901+X, A    ; Voice ADSR2 = parameter
+        b"\x5F\x48\x15"     # JMP $1548         ; Update ADSR and exit
+        b"\x00"             # --- EE: Program change with ADSR
+        b"\xD5\x01\xF6"     # MOV $F601+X, A    ; Set program for voice
+        b"\x1C"             # ASL A             ; Double A
+        b"\xFD"             # MOV Y, A          ; Transfer A to Y
+        b"\xF6\x00\x1A"     # MOV A, $1A00+Y    ; Get pitch multiplier low
+        b"\xD5\x40\xF7"     # MOV $F740+X, A    ; Set pitch multiplier low
+        b"\xF6\x01\x1A"     # MOV A, $1A01+Y    ; Get pitch multiplier high
+        b"\xD5\x41\xF7"     # MOV $F741+X, A    ; Set pitch multiplier high
+        b"\x3F\xC9\x05"     # CALL NextOpCode   ; Store next parameter in A
+        b"\xD5\x00\xF9"     # MOV $F900+X, A    ; Set voice ADSR1 to parameter
+        b"\x3F\xC9\x05"     # CALL NextOpCode   ; Store next parameter in A
+        b"\xD5\x01\xF9"     # MOV $F901+X, A    ; Set voice ADSR2 to parameter
+        b"\xC8\x10"         # CMP X, #$10       ; Is X > $10? (Is this an SFX voice with id > 8?)
+        b"\xB0\x05"         # BCS L1528         ; If so, skip next 5 bytes
+        b"\xE4\x8F"         # MOV A, $8F        ; Store current voice bitmask in A
+        b"\x4E\x61\x00"     # TCLR $0061, A     ; Clear ignore song volume bit for current voice
+        b"\x6F"             # RET               ; Return
+        b"\x00"             # --- ED: Set default ADSR for program
+        b"\x1C"             # ASL A             ; Double A
+        b"\xFD"             # MOV Y, A          ; Transfer A to Y
+        b"\x3F\xC9\x05"     # CALL NextOpCode   ; Store next parameter in A
+        b"\xD6\x80\x1A"     # MOV $1A80+Y, A    ; Set ADSR low
+        b"\x3F\xC9\x05"     # CALL NextOpCode   ; Store next parameter in A
+        b"\xD6\x81\x1A"     # MOV $1A80+Y, A    ; Set ADSR high
+        b"\x6F"             # RET               ; Return
+        )
+    
+    outrom = byte_insert(outrom, offsets["engine"] + 0x19B7 - 0x200, hackblob)
+    
+    # Set jump table
+    outrom = byte_insert(outrom, offsets["engine"] + 0x18D3 - 0x200, b"\xED\x19\xC5\x19\xB8\x19")
+    
+    # Set command length table
+    outrom = byte_insert(outrom, offsets["engine"] + 0x1922 - 0x200, b"\x03\x03\x02")
+    
+    # Set new engine data-block length
+    outrom = int_insert(outrom, offsets["engine"] - 2, 0x17B7 + len(hackblob), 2)
+    claim_space(offsets["engine"] - 2, offsets["engine"] + 0x17B7 + len(hackblob))
+    
+    inform(f"Extra ADSR commands hack loaded.")
     return outrom
     
 def remap_brr(outrom, newloc):
@@ -617,6 +736,7 @@ def insertmfvi(inrom, argparam=None, virt_sample_list=None, virt_seq_list=None, 
         args.edl = None
         args.hack = False
         args.hack2 = True
+        args.hack3 = True
         args.remapbrr = None
         args.brrcount = "0x3F"
         args.brrpath = "samples"
@@ -729,8 +849,6 @@ def insertmfvi(inrom, argparam=None, virt_sample_list=None, virt_seq_list=None, 
             outrom[EDL_OFFSET] = edl
         
     edl_table_address = None
-    if args.hack:
-        outrom = load_edl_hack(outrom)
     if args.hack2:
         outrom = load_shadow_hack(outrom)
     if remapbrr:
@@ -1073,6 +1191,30 @@ def insertmfvi(inrom, argparam=None, virt_sample_list=None, virt_seq_list=None, 
         o = offsets['bgmcount']
         outrom = int_insert(outrom, o, new_bgmcount, 1)
         
+    if args.hack:
+        outrom = load_edl_hack(outrom)
+        
+    # Relocate static BRR data if expanding SPC engine data
+    if args.hack3:
+        o_staticbrrptr = 0x50014
+        o_staticbrrsizeptr = 0x50103
+        o_staticbrr = int.from_bytes(outrom[o_staticbrrptr:o_staticbrrptr+2], "little") + 0x50000
+        len_staticbrr = int.from_bytes(outrom[o_staticbrr:o_staticbrr+2], "little")
+        staticbrr_data = outrom[o_staticbrr+2:o_staticbrr+2+len_staticbrr]
+        staticbrr_data = int.to_bytes(len(staticbrr_data), 2, "little") + staticbrr_data
+        
+        try:
+            outrom, o_staticbrr_new, e = put_somewhere(outrom, staticbrr_data, "static BRR data", bank=5)
+        except FreeSpaceError:
+            warning(f"FATAL ERROR: Not enough free space in bank 5 for static BRR data.")
+            clean_end()
+        outrom = int_insert(outrom, o_staticbrrptr, o_staticbrr_new & 0xFFFF, 2)
+        outrom = int_insert(outrom, o_staticbrrsizeptr, to_rom_address(o_staticbrr_new), 3)
+        free_space(o_staticbrr, o_staticbrr + len_staticbrr + 2)
+        claim_space(o_staticbrr_new, o_staticbrr_new + len_staticbrr + 2)
+        
+        outrom = load_adsr_command_hack(outrom)
+        
     # Insert metadata
     if meta_loc or move_metadata:
         if meta_loc is None:
@@ -1247,6 +1389,7 @@ if __name__ == "__main__":
     hackgroup.add_argument('-e', '--edl', help="set echo delay length in output ROM (affects all game audio)")
     hackgroup.add_argument('-H', '--hack', help="add Myria's EDL ASM hack", action='store_true')
     hackgroup.add_argument('-L', '--hack2', help="add safer subroutines hack", action= 'store_true')
+    hackgroup.add_argument('-A', '--hack3', help="add ADSR command extension hack", action= 'store_true')
     hackgroup.add_argument('-R', '--remapbrr', help="remap SPC memory location for samples (default 4800)", metavar="OFFSET")
     ingroup.add_argument('-B', '--brrcount', default="0x3F", help="define number of instruments contained in source ROM (default: %(default)s)", metavar="NN")
     filegroup.add_argument('-s', '--brrpath', default="", help="define base path for samples loaded from import list files")
