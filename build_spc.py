@@ -3,8 +3,8 @@ import sys
 
 from mml2mfvi import byte_insert, int_insert
 
-SPC_WORK_RAM_FILE = "experimental/spc_work_ram.bin"
-SPC_AUX_RAM_FILE = "experimental/spc_aux_ram.bin"
+SPC_WORK_RAM_FILE = "data/spc_work_ram.bin"
+SPC_AUX_RAM_FILE = "data/spc_aux_ram.bin"
 
 SPC_ENGINE_OFFSET = 0x5070E
 STATIC_BRR_OFFSET = 0x51EC7
@@ -40,7 +40,11 @@ def load_binary_file(fn, expected_size=0):
         with open(fn, "rb") as f:
             data = f.read()
     except OSError:
-        end_with_message(f"Could not open {fn}, aborting")
+        try:
+            with open(os.path.join(os.path.abspath(os.path.dirname(__file__)),fn), "rb") as f:
+                data = f.read()
+        except OSError:
+            end_with_message(f"Could not open {fn}, aborting")
     if len(data) < expected_size:
         end_with_message(f"File {fn} is invalid or corrupt -- expected ${expected_size:0X} bytes, found ${len(data):0X} bytes")
     return data
