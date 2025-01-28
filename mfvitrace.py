@@ -99,7 +99,7 @@ class TrackState():
                     self.stack.append((count, repeats, target))
                 #print(f"[{self.id}] loop end")
                     
-            elif bytecode in [0xEB, 0xEC, 0xED, 0xEE, 0xEF, 0xFD, 0xFE, 0xFF]:
+            elif bytecode in [0xEB, 0xEC, 0xFD, 0xFE, 0xFF]:
                 # End track
                 self.stop()
                 return tempo_changes

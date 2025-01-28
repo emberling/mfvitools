@@ -106,7 +106,7 @@ class Drum:
                     p = ",".join(psplit)
                 elif p[0] == "@":
                     p = unhex(p, 2, r"0x")
-                if len(p) >= 9 and (p[0] in ["|", "@"] or (p[0:1] == "%a")):
+                if len(p) >= 9 and (p[0] in ["|", "@"] or (p[0:2] == "%a")):
                     if p[0] == "%":
                         p = p[1:]
                     p = p[1:]

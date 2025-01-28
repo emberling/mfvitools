@@ -456,7 +456,6 @@ def mml_to_akao_main(mml, ignore='', fileid='mml', all_delims='', use_extra_comm
     for line in mml:
         if line.lower().startswith("#def") or line.lower().startswith("#ext"):
             mode = line[1:4].lower()
-            print(mode)
             line = line[4:]
             line = line.split('#')[0].lower()
             if not line: continue
@@ -481,19 +480,20 @@ def mml_to_akao_main(mml, ignore='', fileid='mml', all_delims='', use_extra_comm
             if not r: break
             mx = r.group(1)
             #
-            m = re.search(r"([^+\-*]+)", mx).group(1)
+            m_basename = re.search(r"([^+\-*=]+)", mx).group(1)
             tweaks = {}
             tweak_text = ""
             while True:
-                twx = re.search(r"([+\-*])([%a-z]+)([0-9.,]+)", mx)
-                if not twx: break
-                tweak_text += twx.group(0)
-                cmd = twx.group(2) + ''.join([c for c in twx.group(3) if c == ','])
-                tweaks[cmd] = (twx.group(1), twx.group(3))
-                mx = mx.replace(twx.group(0), "", 1)
+                tweak_search = re.search(r"([+\-*=])([%a-z@|]+)([0-9.,]+)", mx)
+                if not tweak_search: break
+                tweak_text += tweak_search.group(0)
+                cmd = tweak_search.group(2) + ''.join([c for c in tweak_search.group(3) if c == ','])
+                if cmd in ["@,", "@,,,", "|,", "|,,,"]:
+                    cmd = "@,"
+                tweaks[cmd] = (tweak_search.group(1), tweak_search.group(3))
+                mx = mx.replace(tweak_search.group(0), "", 1)
             #
-            s = macros[m.lower()] if m.lower() in macros else ""
-            p = 0
+            s = macros[m_basename.lower()] if m_basename.lower() in macros else ""
             if tweaks:
                 # "o,,": ("+", ",1,")
                 skip = ignore + "\"'{"
@@ -519,6 +519,10 @@ def mml_to_akao_main(mml, ignore='', fileid='mml', all_delims='', use_extra_comm
                     while sq and sq[0] in "1234567890,.+-x":
                         d += sq.pop(0)
                     cmd = c + ''.join([ch for ch in d if ch == ','])
+                    if cmd[0] in "@|":
+                        if d and "@," in tweaks:
+                            d = d.split(',')
+                            d = d[0] + ',' + tweaks["@,"][1]
                     if d and (cmd in tweaks):
                         d = d.split(',')
                         e = tweaks[cmd][1].split(',')
@@ -539,7 +543,7 @@ def mml_to_akao_main(mml, ignore='', fileid='mml', all_delims='', use_extra_comm
                             except:
                                 try: dn = int(d[j],16)
                                 except:
-                                    warn(fileid, m, "error parsing {} into {}".format(r.group(0), s))      
+                                    warn(fileid, m_basename, "error parsing {} into {}".format(r.group(0), s))      
                                     dn = 0
                             if sign == "*":
                                 result = dn * en
@@ -547,6 +551,8 @@ def mml_to_akao_main(mml, ignore='', fileid='mml', all_delims='', use_extra_comm
                                 result = dn - en
                             elif sign == "+":
                                 result = dn + en
+                            elif sign == "=":
+                                result = en
                             if result < 0: result = 0
                             if ((cmd == "v" or cmd == "p") and j==0) or ((cmd == "v," or cmd == "p,") and j==1):
                                 if result > 127: result = 127
@@ -762,18 +768,20 @@ def mml_to_akao_main(mml, ignore='', fileid='mml', all_delims='', use_extra_comm
         allowed_0x_commands = ["@", "|", "%d"]
         if command == "%": command += m.pop(0)
         prefix = command
-        if prefix == "|" and len(m):
+        if prefix == "|" and len(m) and m[0] in "1234567890ABCDEFabcdef":
             command = "@"
             command += m.pop(0)
             command = unhex(command, 1, "", offset=0x20)
-            print(command)
+        if prefix == "%d" and len(m) >= 2:
+            if m[0] in "1234567890ABCDEFabcdef" and m[1] == ",":
+                digit = m.pop(0)
+                command += unhex(digit, 1, "", offset=0x20)
+                command += m.pop(0)
         while len(m):
-            if prefix in allowed_0x_commands: print(f"{prefix=} {command=} {m[0]=}")
             while m[0] in "1234567890,.+-x":
                 command += m.pop(0)
                 if not len(m): break
             if len(m) and prefix in allowed_0x_commands:
-                if prefix in allowed_0x_commands: print(f" {prefix=} {command=} {m[0]=}")
                 if len(command) >= 3 and "0x" in command[-3:]:
                     if m[0] in "ABCDEFabcdef":
                         command += m.pop(0)
@@ -788,7 +796,6 @@ def mml_to_akao_main(mml, ignore='', fileid='mml', all_delims='', use_extra_comm
                     command = unhex(command, 2, "0x")
                     continue
             break
-        if prefix in allowed_0x_commands: print(f"  {prefix=} {command=} {m[0]=}")
         
         #catch @0x before parsing params
         #if "|" in command:

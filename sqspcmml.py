@@ -997,6 +997,14 @@ formats["ff6"].hard_jump = [0xF6]
 formats["ff6"].loop_break = [0xF5]
 formats["ff6"].conditional_jump = [0xFC]
 
+formats["ff6adsr"] = copy.deepcopy(formats["ff6"])
+formats["ff6adsr"].id = "ff6adsr"
+formats["ff6adsr"].display_name = "AKAO / Final Fantasy VI (mfvitools ADSR hack)"
+formats["ff6adsr"].end_track = [0xEB, 0xEC, 0xFD, 0xFE, 0xFF]
+formats["ff6adsr"].bytecode[0xED] = Code(4, "%d", params=[P(1), P(2), P(3)])
+formats["ff6adsr"].bytecode[0xEE] = ProgramCode(4, params=[P(1), P(2), P(3)])
+formats["ff6adsr"].bytecode[0xEF] = Code(3, "%a", params=[P(1), P(2)])
+
         # FRONT MISSION #
 formats["fm"] = copy.deepcopy(formats["ff6"])
 formats["fm"].sort_as = "09"
@@ -2272,8 +2280,17 @@ if __name__ == "__main__":
             #print(f" scanning at {fmt.scanner_loc:X} for {fmt.scanner_data}")
             #print(f" found {bin[fmt.scanner_loc:fmt.scanner_loc+len(fmt.scanner_data)]}")
             if bin[fmt.scanner_loc:fmt.scanner_loc+len(fmt.scanner_data)] == fmt.scanner_data:
-                format = fmt
-                print(f"Detected format '{fid}'")
+                # Special case: check for FF6 ADSR hack
+                # TODO: change this to a generalized alternate scan location,
+                #       or codify it as command-length-table location
+                if fid.startswith("ff6"):
+                    if bin[0x1A22:0x1A25] == b"\x03\x03\x02":
+                        format = formats["ff6adsr"]
+                    else:
+                        format = formats["ff6"]
+                else:
+                    format = fmt
+                print(f"Detected format '{format.id}'")
                 break
         if not format:
             print(f"Could not automatically detect format")
